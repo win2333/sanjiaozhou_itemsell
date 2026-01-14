@@ -51,7 +51,7 @@ def init_components() -> tuple:
         str(TEMPLATES_DIR), threshold=TEMPLATE_MATCH_THRESHOLD
     )
     item_templates = item_recognizer.load_templates()
-    print(f"已加载 {len(item_templates)} 个物品模板: {item_templates}")
+    print(f"已加载 {len(item_templates)} 个物品模板")
 
     if not item_templates:
         print("\n警告: 没有找到物品模板图片！")
@@ -62,11 +62,6 @@ def init_components() -> tuple:
         str(UI_TEMPLATES_DIR), threshold=UI_TEMPLATE_THRESHOLD
     )
     ui_templates = ui_recognizer.load_templates()
-    if ui_templates:
-        print(f"已加载 {len(ui_templates)} 个UI模板: {ui_templates}")
-    else:
-        print(f"\n注意: 没有找到UI模板！")
-        print(f"请将UI截图放到: {UI_TEMPLATES_DIR}")
 
     # 初始化价格识别器
     price_reader = PriceReader()

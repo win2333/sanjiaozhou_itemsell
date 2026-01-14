@@ -3,8 +3,11 @@
 import re
 import math
 import cv2
+from config import DEBUG_DIR
 import numpy as np
 from typing import List, Tuple, Optional, Dict
+
+from utils.logger import get_logger
 
 # 全局 OCR 实例（单例）
 _ocr_reader = None
@@ -17,9 +20,9 @@ def get_ocr_reader():
         try:
             import easyocr
             _ocr_reader = easyocr.Reader(['ch_sim', 'en'], gpu=True)
-            print("[PriceReader] OCR 初始化成功")
+            get_logger().log_only("[PriceReader]", "OCR 初始化成功")
         except Exception as e:
-            print(f"[PriceReader] OCR 初始化失败: {e}")
+            get_logger().log_only("[PriceReader]", f"OCR 初始化失败: {e}")
             _ocr_reader = False  # 标记初始化失败，避免重复尝试
     return _ocr_reader if _ocr_reader else None
 
@@ -41,7 +44,7 @@ class PriceReader:
         """
         reader = get_ocr_reader()
         if reader is None:
-            print("[PriceReader] OCR 未初始化")
+            get_logger().log_only("[PriceReader]", "OCR 未初始化")
             return []
 
         # 价格区域（5个价格显示的位置）
@@ -49,19 +52,19 @@ class PriceReader:
         price_region = image[734:770, 440:1050]
 
         # 保存原始区域用于调试
-        cv2.imwrite("debug_price_region.png", price_region)
+        cv2.imwrite(str(DEBUG_DIR / "debug_price_region.png"), price_region)
 
         # 图片预处理：转灰度
         gray = cv2.cvtColor(price_region, cv2.COLOR_BGR2GRAY)
 
         # 保存预处理后的图片用于调试
-        cv2.imwrite("debug_price_gray.png", gray)
+        cv2.imwrite(str(DEBUG_DIR / "debug_price_gray.png"), gray)
 
         # OCR 识别（使用灰度图）
         try:
             results = reader.readtext(gray, detail=1)
         except Exception as e:
-            print(f"[PriceReader] OCR 识别失败: {e}")
+            get_logger().log_only("[PriceReader]", f"OCR 识别失败: {e}")
             return []
 
         # print(f"[PriceReader] OCR 原始结果: {[(bbox, text, conf) for bbox, text, conf in results]}")
@@ -81,13 +84,13 @@ class PriceReader:
                     price_value = int(clean_text)
                     # 过滤掉太小的值（可能是误识别）
                     if price_value < 100:
-                        print(f"[PriceReader] 忽略过小值: {price_value}")
+                        get_logger().log_only("[PriceReader]", f"忽略过小值: {price_value}")
                         continue
                     # 计算在原图中的位置
                     x = int(bbox[0][0]) + 440
                     y = int(bbox[0][1]) + 734
                     prices.append((price_value, x, y))
-                    print(f"[PriceReader] 识别到价格: {price_value} (置信度: {confidence:.2f})")
+                    get_logger().log_only("[PriceReader]", f"识别到价格: {price_value} (置信度: {confidence:.2f})")
                 except ValueError:
                     pass
 
@@ -160,13 +163,13 @@ def calculate_price_with_fallback(p1: int, p2: Optional[int] = None) -> int:
     if p2 is not None and p2 > p1:
         # 正常情况：使用对称减法算法
         price = calculate_optimal_price(p1, p2)
-        print(f"  [价格计算] P1={p1}, P2={p2}, 步长={p2-p1}, 结果={price}")
+        get_logger().log_only("[价格计算]", f"P1={p1}, P2={p2}, 步长={p2-p1}, 结果={price}")
         return price
     else:
         # 异常情况：只有一根柱子，回退到 95% 定价
         fallback_price = int(p1 * 0.95)
         fallback_price = math.floor(fallback_price / 10) * 10
-        print(f"  [价格计算] 只有一根柱子，回退到 P1*0.95 = {fallback_price}")
+        get_logger().log_only("[价格计算]", f"只有一根柱子，回退到 P1*0.95 = {fallback_price}")
         return fallback_price
 
 

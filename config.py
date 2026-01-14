@@ -11,6 +11,9 @@ BASE_DIR = Path(__file__).parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 UI_TEMPLATES_DIR = BASE_DIR / "templates" / "ui"  # UI元素模板目录
 
+# Debug 图片目录
+DEBUG_DIR = BASE_DIR / "debug"
+
 # 模板匹配参数
 TEMPLATE_MATCH_THRESHOLD = 0.98  # 匹配阈值 (0-1)，越高越严格
 UI_TEMPLATE_THRESHOLD = 0.9      # UI元素匹配阈值（需要更精确）

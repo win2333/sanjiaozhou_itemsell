@@ -6,6 +6,7 @@ sys.path.insert(0, '.')
 import cv2
 from PIL import Image, ImageDraw, ImageFont
 from vision.capture import ScreenCapture
+from config import DEBUG_DIR
 
 
 def draw_chinese_text(img, text, pos, font_size=20, color=(255, 255, 255)):
@@ -82,7 +83,7 @@ def main():
         print(f"{name}: 中心 ({cx}, {cy})")
 
     # 保存原图（不含中文）
-    output_path = "debug_markers.png"
+    output_path = str(DEBUG_DIR / "debug_markers.png")
     cv2.imwrite(output_path, image)
     print(f"\n图片已保存到: {output_path}")
     print("（不含中文标签，矩形框位置正确）")

@@ -111,6 +111,21 @@ class Logger:
         """错误"""
         self.log("[错误]", message)
 
+    def print_only(self, message: str) -> None:
+        """只输出到控制台，不写入文件"""
+        print(message)
+
+    def log_only(self, prefix: str, message: str) -> None:
+        """只写入日志文件，不输出到控制台
+
+        Args:
+            prefix: 日志前缀（如 [操作]）
+            message: 日志内容
+        """
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self._buffer.append(f"[{timestamp}] {prefix} {message}")
+        self._flush()
+
 
 # 全局日志实例
 _logger: Optional[Logger] = None

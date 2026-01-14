@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 from vision.capture import ScreenCapture
 from vision.recognizer import TemplateRecognizer
-from config import UI_TEMPLATES_DIR, UI_TEMPLATE_THRESHOLD
+from config import UI_TEMPLATES_DIR, UI_TEMPLATE_THRESHOLD, DEBUG_DIR
 
 
 def main():
@@ -68,7 +68,7 @@ def main():
     cv2.circle(image, (upload2.center_x, upload2.center_y), 8, (0, 255, 0), -1)
 
     # 保存图片用于点击
-    click_img_path = "debug_click.png"
+    click_img_path = str(DEBUG_DIR / "debug_click.png")
     cv2.imwrite(click_img_path, image)
 
     print(f"\n图片已保存，请查看并点击价格输入框位置")
@@ -129,9 +129,9 @@ def main():
     pred_y = upload2.center_y + offset_y
     cv2.circle(verification_image, (pred_x, pred_y), 15, (0, 165, 255), -1)
 
-    cv2.imwrite("debug_verification.png", verification_image)
+    cv2.imwrite(str(DEBUG_DIR / "debug_verification.png"), verification_image)
 
-    print("\n验证图片已保存: debug_verification.png")
+    print(f"\n验证图片已保存: {DEBUG_DIR / \"debug_verification.png\"}")
     print("红色=upload2 绿色=upload2中心 蓝色=你点击的位置 橙色=预测点")
 
     # 显示验证

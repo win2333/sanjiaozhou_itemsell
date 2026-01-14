@@ -31,6 +31,19 @@ from config import (
     UPLOAD2_Y,
 )
 
+# 预估参数
+AVG_SELL_TIME = 10.0  # 每个物品预估耗时（秒）
+
+
+def format_time(seconds: float) -> str:
+    """格式化时间显示"""
+    if seconds >= 60:
+        mins = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{mins} 分 {secs} 秒"
+    else:
+        return f"{seconds:.1f}秒"
+
 
 # 验证参数
 VERIFY_MARGIN = 10  # 验证区域边距（像素）
@@ -183,7 +196,9 @@ class AutoSellLoop:
         results = self.item_recognizer.recognize(image, draw_debug=False)
 
         # 3. 去重
+        # 先空间去重（去除误识别），再按名称分组（同名物品只卖一次）
         results = self.item_recognizer.deduplicate(results, DEDUP_DISTANCE)
+        results = self.item_recognizer.deduplicate_by_name(results)
 
         if not results:
             # 空闲检测：更新连续未识别次数
@@ -197,7 +212,10 @@ class AutoSellLoop:
             else:
                 self.state.idle_delay = LOOP_DELAY  # 正常延迟
 
-            logger.recognize(f"未识别到物品 (连续{self.state.consecutive_empty}次, 延迟{self.state.idle_delay:.1f}s)")
+            # 控制台简化
+            logger.print_only(f"未识别到物品 (连续{self.state.consecutive_empty}次, 延迟{self.state.idle_delay:.1f}s)")
+            # 日志完整
+            logger.log_only("[识别]", f"未识别到物品 (连续{self.state.consecutive_empty}次, 延迟{self.state.idle_delay:.1f}s)")
             time.sleep(self.state.idle_delay)
             return
 
@@ -224,12 +242,18 @@ class AutoSellLoop:
             )
             item_records.append(record)
 
-        # 输出识别结果
+        # 预估时间
+        estimated = len(item_records) * AVG_SELL_TIME
+        # 控制台简化版
+        logger.print_only(f"识别到 {len(item_records)} 个物品 (预估 ~{format_time(estimated)})")
+
+        # 日志文件记录完整版
         items_info = ", ".join(
             f"{r.name}({r.confidence:.2f})" for r in item_records[:5]
         )
         more = f" 等{len(item_records)}个" if len(item_records) > 5 else ""
-        logger.recognize(f"识别到 {len(item_records)} 个物品: {items_info}{more}")
+        logger.log_only("[识别]", f"识别到 {len(item_records)} 个物品: {items_info}{more}")
+        logger.log_only("[预估]", f"平均耗时: {AVG_SELL_TIME:.1f}秒/个 | 预估完成: ~{format_time(estimated)}")
 
         # 重置空闲检测计数器
         self.state.consecutive_empty = 0
@@ -241,13 +265,15 @@ class AutoSellLoop:
             if not self.state.is_running:
                 return
 
-            logger.operation(f"准备处理: {record.name} ({record.x}, {record.y})")
+            # 只写入日志，不输出到控制台
+            logger.log_only("[操作]", f"准备处理: {record.name} ({record.x}, {record.y})")
 
             # === 验证阶段 ===
             passed, mse = self._verify_item(record)
 
             if passed:
-                logger.verify(f"MSE={mse:.1f} < {VERIFY_MSE_THRESHOLD} | 验证通过 ✓")
+                # 只写入日志，不输出到控制台
+                logger.log_only("[验证]", f"MSE={mse:.1f} < {VERIFY_MSE_THRESHOLD} | 验证通过")
                 # 验证通过，处理物品
                 self._sell_item_with_log(record)
                 sold_count += 1
@@ -255,163 +281,137 @@ class AutoSellLoop:
                     (record.x // DEDUP_DISTANCE, record.y // DEDUP_DISTANCE)
                 )
             else:
-                logger.verify(f"MSE={mse:.1f} | 验证失败，仓库变了，重新识别")
+                # 只写入日志，不输出到控制台
+                logger.log_only("[验证]", f"MSE={mse:.1f} | 验证失败，仓库变了，重新识别")
                 break  # 跳出循环，重新全屏识别
 
         # 6. 输出统计
         cycle_time = time.time() - cycle_start
-        logger.stats(f"本轮: 卖出 {sold_count}/{len(item_records)} | 耗时: {cycle_time:.1f}s")
+        # 控制台显示简化版
+        logger.print_only(f"  本轮: {sold_count}/{len(item_records)} | 耗时 {cycle_time:.1f}s")
+        # 日志文件记录完整版
+        logger.log_only("[统计]", f"本轮: 卖出 {sold_count}/{len(item_records)} | 耗时: {cycle_time:.1f}s")
 
         # 7. 延迟后继续（使用空闲检测的延迟时间）
         time.sleep(self.state.idle_delay)
 
     def _sell_item_with_log(self, record: ItemRecord) -> None:
-        """卖出单个物品（带详细日志）"""
+        """卖出单个物品（带回退重试机制）"""
         logger = get_logger()
         item_name = record.name
         x = record.x
         y = record.y
         sell_start = time.time()
 
-        logger.operation(f"鼠标移动到 ({x}, {y})")
+        # 重试配置
+        max_retry = 5  # 最大总重试次数
 
-        # 1. 鼠标移动到物品上（悬停）
-        self.mouse.move_to(x, y)
-        time.sleep(random.uniform(0.1, 0.15))
+        for retry_count in range(max_retry):
+            try:
+                # ========== 步骤 1: 鼠标移动 ==========
+                logger.log_only("[操作]", f"鼠标移动到 ({x}, {y})")
+                self.mouse.move_to(x, y)
+                time.sleep(random.uniform(0.1, 0.15))
 
-        # 2. 右键点击（打开菜单）
-        self.mouse.right_click(x, y)
-        logger.operation(f"右键点击 ({x}, {y})")
-        time.sleep(random.uniform(0.1, 0.15))
+                # ========== 步骤 2: 右键点击 ==========
+                self.mouse.right_click(x, y)
+                logger.log_only("[操作]", f"右键点击 ({x}, {y})")
+                time.sleep(random.uniform(0.15, 0.2))
 
-        # 3. 识别 sell1 并点击
-        sell1_result = self._find_ui_element("sell1")
-        if sell1_result:
-            self.mouse.click(sell1_result.center_x, sell1_result.center_y)
-            logger.operation(f"点击 sell1 ({sell1_result.center_x}, {sell1_result.center_y})")
-        else:
-            logger.warning("未找到 sell1 按钮")
-            return
-        time.sleep(random.uniform(0.1, 0.15))
-
-        # 4. 点击 upload1（选择上架到交易行）
-        if USE_FIXED_COORDINATES:
-            # 使用固定坐标
-            self.mouse.click(UPLOAD1_X, UPLOAD1_Y)
-            logger.operation(f"点击 upload1 (固定: {UPLOAD1_X}, {UPLOAD1_Y})")
-            upload2_x = UPLOAD2_X
-            upload2_y = UPLOAD2_Y
-        else:
-            # 使用图像识别
-            upload1_result = self._find_ui_element("upload1")
-            if upload1_result:
-                self.mouse.click(upload1_result.center_x, upload1_result.center_y)
-                logger.operation(f"点击 upload1 ({upload1_result.center_x}, {upload1_result.center_y})")
-            else:
-                logger.warning("未找到 upload1 按钮")
-                return
-
-            # 5. 找到 upload2
-            upload2_result = self._find_ui_element("upload2")
-            if not upload2_result:
-                logger.warning("未找到 upload2 按钮")
-                return
-            upload2_x = upload2_result.center_x
-            upload2_y = upload2_result.center_y
-
-        time.sleep(random.uniform(0.1, 0.15))
-
-        # 计算坐标
-        price_input_x = upload2_x + PRICE_OFFSET_X
-        price_input_y = upload2_y + PRICE_OFFSET_Y
-        quantity_x = upload2_x + QUANTITY_OFFSET_X
-        quantity_y = upload2_y + QUANTITY_OFFSET_Y
-
-        logger.calculate(f"价格输入框: ({price_input_x}, {price_input_y})")
-        logger.calculate(f"数量按钮: ({quantity_x}, {quantity_y})")
-
-        # 6. 点击数量按钮（点满，重复3次确保点满）
-        for i in range(3):
-            self.mouse.click(quantity_x, quantity_y)
-            time.sleep(random.uniform(0.05, 0.1))
-        logger.operation(f"点击数量按钮 3次 ({quantity_x}, {quantity_y})")
-        time.sleep(random.uniform(0.1, 0.2))
-
-        # 7. 截图识别价格（带验证，最多重试3次）
-        price = None
-        for retry in range(3):
-            screenshot = self.capture.capture_full_screen()
-            p1, p2 = self.price_reader.get_p1_p2(screenshot)
-            if p1 is None:
-                logger.warning(f"第{retry+1}次: 未能识别到价格")
-                if retry < 2:
-                    time.sleep(0.2)
+                # ========== 步骤 3: 识别 sell1 ==========
+                sell1_result = self._find_ui_element("sell1")
+                if not sell1_result:
+                    logger.log_only("[警告]", f"第{retry_count+1}次: 未找到 sell1，回退重试...")
                     continue
+                self.mouse.click(sell1_result.center_x, sell1_result.center_y)
+                logger.log_only("[操作]", f"点击 sell1 ({sell1_result.center_x}, {sell1_result.center_y})")
+                time.sleep(random.uniform(0.3, 0.4))
+
+                # ========== 步骤 4: 识别 upload1 ==========
+                if USE_FIXED_COORDINATES:
+                    # 使用固定坐标
+                    self.mouse.click(UPLOAD1_X, UPLOAD1_Y)
+                    logger.log_only("[操作]", f"点击 upload1 (固定: {UPLOAD1_X}, {UPLOAD1_Y})")
+                    upload2_x = UPLOAD2_X
+                    upload2_y = UPLOAD2_Y
                 else:
-                    # 重试失败，从价格输入框识别默认价格
-                    default_price = self._get_default_price(price_input_x, price_input_y)
-                    price = default_price
-                    logger.warning(f"重试失败，使用系统默认价格: {price}")
-                    break
+                    upload1_result = self._find_ui_element("upload1")
+                    if not upload1_result:
+                        logger.log_only("[警告]", f"第{retry_count+1}次: 未找到 upload1，回退重试...")
+                        continue
+                    self.mouse.click(upload1_result.center_x, upload1_result.center_y)
+                    logger.log_only("[操作]", f"点击 upload1 ({upload1_result.center_x}, {upload1_result.center_y})")
+                    time.sleep(random.uniform(0.15, 0.2))
 
-            logger.calculate(f"价格识别: P1={p1}, P2={p2}")
+                    # ========== 步骤 5: 识别 upload2 ==========
+                    upload2_result = self._find_ui_element("upload2")
+                    if not upload2_result:
+                        logger.log_only("[警告]", f"第{retry_count+1}次: 未找到 upload2，重试 upload1...")
+                        # 只回退到 upload1，不重新点击 sell1
+                        time.sleep(0.2)
+                        continue  # 继续重试，upload1_result 重新识别
+                    upload2_x = upload2_result.center_x
+                    upload2_y = upload2_result.center_y
 
-            # 计算最优价格
-            calculated_price = calculate_price(p1, p2)
-            logger.calculate(f"计算结果: 售价={calculated_price}")
+                # ========== 步骤 6: 点击数量按钮 ==========
+                quantity_x = upload2_x + QUANTITY_OFFSET_X
+                quantity_y = upload2_y + QUANTITY_OFFSET_Y
+                for i in range(3):
+                    self.mouse.click(quantity_x, quantity_y)
+                    time.sleep(random.uniform(0.05, 0.1))
+                logger.log_only("[操作]", f"点击数量按钮 3次 ({quantity_x}, {quantity_y})")
+                time.sleep(random.uniform(0.1, 0.2))
 
-            # 获取默认价格用于验证
-            default_price = self._get_default_price(price_input_x, price_input_y)
+                # ========== 步骤 7: 识别价格并计算 ==========
+                price_input_x = upload2_x + PRICE_OFFSET_X
+                price_input_y = upload2_y + PRICE_OFFSET_Y
 
-            # 验证结果
-            if calculated_price <= 0:
-                logger.warning(f"第{retry+1}次: 计算结果为负数 ({calculated_price})")
-            elif default_price > 0 and calculated_price > default_price * 1.5:
-                logger.warning(f"第{retry+1}次: 价格偏高 ({calculated_price} > {default_price * 1.5})")
-            elif default_price > 0 and calculated_price < default_price * 0.5:
-                logger.warning(f"第{retry+1}次: 价格偏低 ({calculated_price} < {default_price * 0.5})")
-            else:
-                # 价格合理
-                price = calculated_price
-                logger.calculate(f"价格验证通过: {price}")
-                break
+                screenshot = self.capture.capture_full_screen()
+                p1, p2 = self.price_reader.get_p1_p2(screenshot)
 
-            # 价格不合理，重试
-            if retry < 2:
-                logger.operation("重新识别价格...")
-                time.sleep(0.2)
-            else:
-                price = default_price
-                logger.warning(f"重试失败，使用系统默认价格: {price}")
+                if p1 is None:
+                    logger.log_only("[警告]", f"第{retry_count+1}次: 未识别到价格，回退重试...")
+                    continue
 
-        # 9. 点击价格输入框
-        self.mouse.click(price_input_x, price_input_y)
-        logger.operation(f"点击价格输入框 ({price_input_x}, {price_input_y})")
-        time.sleep(random.uniform(0.1, 0.2))
+                calculated_price = calculate_price(p1, p2)
+                if calculated_price <= 0:
+                    logger.log_only("[警告]", f"第{retry_count+1}次: 价格计算异常 ({calculated_price})，回退重试...")
+                    continue
 
-        # 10. 输入价格
-        self.keyboard.ctrl_a()
-        time.sleep(random.uniform(0.05, 0.1))
+                logger.log_only("[计算]", f"P1={p1}, P2={p2}, 售价={calculated_price}")
 
-        if USE_CLIPBOARD_INPUT:
-            # 使用剪贴板输入（更快）
-            self.keyboard.copy_to_clipboard(str(price))
-            self.keyboard.paste()
-            logger.operation(f"输入价格(剪贴板): {price}")
-        else:
-            # 使用键盘逐字符输入
-            self.keyboard.type_text(str(price))
-            logger.operation(f"输入价格: {price}")
-        time.sleep(random.uniform(0.1, 0.2))
+                # ========== 步骤 8: 输入价格 ==========
+                self.mouse.click(price_input_x, price_input_y)
+                time.sleep(random.uniform(0.1, 0.2))
+                self.keyboard.ctrl_a()
+                time.sleep(random.uniform(0.05, 0.1))
 
-        # 11. 点击 upload2 确认
-        self.mouse.click(upload2_x, upload2_y)
-        logger.operation(f"点击 upload2 ({upload2_x}, {upload2_y})")
+                if USE_CLIPBOARD_INPUT:
+                    self.keyboard.copy_to_clipboard(str(calculated_price))
+                    self.keyboard.paste()
+                else:
+                    self.keyboard.type_text(str(calculated_price))
+                logger.log_only("[操作]", f"输入价格: {calculated_price}")
+                time.sleep(random.uniform(0.1, 0.2))
 
-        # 完成
-        sell_time = time.time() - sell_start
-        self.state.total_sold += 1
-        logger.complete(f"已卖出 {item_name} | 耗时: {sell_time:.1f}s")
+                # ========== 步骤 9: 点击 upload2 确认 ==========
+                self.mouse.click(upload2_x, upload2_y)
+                logger.log_only("[操作]", f"点击 upload2 ({upload2_x}, {upload2_y})")
+
+                # 成功完成
+                sell_time = time.time() - sell_start
+                self.state.total_sold += 1
+                logger.print_only(f"卖出 {item_name} 售价 {calculated_price} (耗时 {sell_time:.1f}s)")
+                logger.log_only("[完成]", f"已卖出 {item_name} | 耗时: {sell_time:.1f}s")
+                return
+
+            except Exception as e:
+                logger.log_only("[错误]", f"第{retry_count+1}次: {e}")
+                continue
+
+        # 重试次数用完，失败
+        logger.log_only("[错误]", f"重试{max_retry}次后仍失败，放弃卖出: {item_name}")
+        logger.print_only(f"卖出失败 {item_name} (重试{max_retry}次)")
 
     def _find_ui_element(self, element_name: str) -> Optional[MatchResult]:
         """查找UI元素

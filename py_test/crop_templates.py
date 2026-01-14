@@ -3,7 +3,8 @@ import cv2
 import numpy as np
 from pathlib import Path
 
-templates_dir = Path(r"C:\Users\Eureka\Desktop\sanjiaozhouGame\templates")
+# 使用相对于当前脚本的路径
+templates_dir = Path(__file__).parent.parent / "templates"
 crop = 2  # 每边裁剪像素数
 
 def imread(path):

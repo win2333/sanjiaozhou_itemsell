@@ -3,10 +3,13 @@
 import cv2
 import numpy as np
 from pathlib import Path
+from config import DEBUG_DIR
 from typing import List, Tuple, Optional, Dict
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
+
+from utils.logger import get_logger
 
 # 中文字体路径（Windows）
 CHINESE_FONTS = [
@@ -144,9 +147,9 @@ class TemplateRecognizer:
         if results:
             item_names = [f"{r.template_name}({r.confidence:.2f})" for r in results[:5]]
             more = f" 等{len(results)}个" if len(results) > 5 else ""
-            print(f"[识别报告] {start_time_str} → {end_time_str} | 耗时: {elapsed_ms:.1f}ms | 识别到: {', '.join(item_names)}{more}")
+            get_logger().log_only("[识别报告]", f"{start_time_str} → {end_time_str} | 耗时: {elapsed_ms:.1f}ms | 识别到: {', '.join(item_names)}{more}")
         else:
-            print(f"[识别报告] {start_time_str} → {end_time_str} | 耗时: {elapsed_ms:.1f}ms | 未识别到物品")
+            get_logger().log_only("[识别报告]", f"{start_time_str} → {end_time_str} | 耗时: {elapsed_ms:.1f}ms | 未识别到物品")
 
         # 绘制调试框
         if draw_debug and results:
@@ -154,9 +157,9 @@ class TemplateRecognizer:
             self._draw_debug_boxes(work_image, results)
             # 保存带置信度标记的图片
             import os
-            save_path = "debug_item_recognize.png"
+            save_path = str(DEBUG_DIR / "debug_item_recognize.png")
             self.save_debug_image(work_image, save_path)
-            print(f"  [调试] 已保存识别结果图片: {save_path}")
+            get_logger().log_only("[调试]", f"已保存识别结果图片: {save_path}")
 
         # 恢复原始坐标（加上裁剪偏移量）
         if work_image.shape[1] > 0 and image.shape[1] > 1150:
@@ -270,6 +273,36 @@ class TemplateRecognizer:
                 keep.append(result)
 
         return keep
+
+    def deduplicate_by_name(self, results: List[MatchResult]) -> List[MatchResult]:
+        """按模板名称分组去重 - 同名物品只保留置信度最高的
+
+        用于批量卖出场景：同种物品在游戏中可以一次性全部卖出，
+        因此只需要保留一个代表项即可。
+
+        Args:
+            results: 匹配结果列表
+
+        Returns:
+            去重后的结果列表，每种物品只保留置信度最高的一个
+        """
+        if not results:
+            return []
+
+        # 按名称分组
+        groups: Dict[str, List[MatchResult]] = {}
+        for r in results:
+            if r.template_name not in groups:
+                groups[r.template_name] = []
+            groups[r.template_name].append(r)
+
+        # 每组只保留置信度最高的
+        deduped = []
+        for name, items in groups.items():
+            best = max(items, key=lambda x: x.confidence)
+            deduped.append(best)
+
+        return deduped
 
     def _draw_debug_boxes(
         self, image: np.ndarray, results: List[MatchResult]
