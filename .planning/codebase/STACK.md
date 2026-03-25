@@ -1,97 +1,103 @@
 # Technology Stack
 
-**Analysis Date:** 2026-03-23
+**Analysis Date:** 2026-03-25
 
 ## Languages
 
 **Primary:**
-- Python 3.x - Core language for automation scripts
+- Python 3.12+ - Main game automation scripting
 
 **Secondary:**
-- None detected
+- None significant
 
 ## Runtime
 
 **Environment:**
-- Python 3 (Windows native)
-- Platform: Windows 11
+- Windows (Desktop game automation)
+- Python 3.12+ (based on `browser-use-test/pyproject.toml` requires-python >=3.12)
 
 **Package Manager:**
 - pip (requirements.txt)
-- No lockfile present
+- uv (for browser-use-test sub-project)
 
 ## Frameworks
 
-**Core:**
-- None (standalone Python automation)
+**Core Game Automation:**
+- Custom game automation framework
+- Template matching (OpenCV-based)
+- YOLO object detection (optional, via ultralytics)
 
-**Vision/Image Processing:**
-- opencv-python >= 4.8.0 - Template matching, image processing
-- mss >= 9.0.1 - Screen capture (cross-platform)
-- numpy >= 1.24.0 - Numerical operations
-- Pillow >= 10.0.0 - Image format support
+**Computer Vision:**
+- OpenCV 4.8.0+ - Image processing, template matching
+- PyTorch (optional) - GPU acceleration for template matching
+- Ultralytics YOLO (optional) - Deep learning object detection
 
-**Input Automation:**
-- pydirectinput >= 1.0.4 - Direct input simulation (keyboard/mouse)
-- pyautogui >= 0.9.53 - High-level GUI automation
-- keyboard >= 0.13.5 - Keyboard event handling
-- pywin32 >= 306 - Windows API access
+**Input Control:**
+- pydirectinput - Mouse/keyboard control (primary)
+- pyautogui - Input control (fallback)
+- keyboard - Global hotkey handling
+- pywin32 - Windows API access
 
 **OCR:**
-- easyocr >= 1.7.0 - Chinese and English text recognition
+- EasyOCR 1.7.0+ - Local OCR for price recognition (GPU-accelerated)
 
-**Clipboard:**
-- pyperclip >= 1.8.0 - System clipboard operations
-
-**Optional GPU Acceleration:**
-- torch (PyTorch) - CUDA-accelerated template matching (optional, auto-detected)
-
-**Configuration:**
-- Python native (config.py module)
+**Screen Capture:**
+- mss 9.0.1+ - Fast cross-platform screen capture
 
 ## Key Dependencies
 
 **Critical:**
-- opencv-python - Template matching algorithm (TM_CCOEFF_NORMED)
-- mss - Screen capture functionality
-- pydirectinput - Game input simulation
-- easyocr - Price text recognition
+- `opencv-python>=4.8.0` - Template matching, image processing
+- `numpy>=1.24.0` - Numerical operations for image arrays
+- `mss>=9.0.1` - Screen capture
+- `pydirectinput>=1.0.4` - Mouse/keyboard simulation
+- `keyboard>=0.13.5` - Hotkey registration and listening
 
-**Infrastructure:**
-- numpy - Array operations for image processing
-- Pillow - Image format handling
-- pywin32 - Windows-specific input control
+**Vision/ML (Optional):**
+- `torch` - GPU acceleration (auto-detected if CUDA available)
+- `ultralytics` - YOLO item detection model
+- `easyocr>=1.7.0` - OCR for price reading
 
-**Optional:**
-- torch - GPU acceleration for template matching
+**Utilities:**
+- `Pillow>=10.0.0` - Image format conversion, Chinese font rendering
+- `pyperclip>=1.8.0` - Clipboard operations for price input
+- `pywin32>=306` - Windows API bindings
+
+**Browser Automation (Separate sub-project):**
+- `browser-use>=0.12.2` - AI-powered browser automation (browser-use-test/)
 
 ## Configuration
 
 **Environment:**
-- No environment variables or .env files detected
-- Configuration via `config.py` (Python constants)
-- Hardcoded paths and thresholds
+- `config.py` - Main configuration file
+- Hardcoded game window coordinates (pixel-based)
+- Environment-specific paths for templates
 
-**Key Config Files:**
-- `config.py` - Main configuration (thresholds, coordinates, modes)
+**Key configs in `config.py`:**
+```python
+ITEM_DETECTOR_MODE = "hybrid"  # "template" | "yolo" | "hybrid"
+USE_FIXED_COORDINATES = True   # Use fixed coordinates instead of UI recognition
+USE_GPU_TEMPLATE_RECOGNITION = False
+YOLO_MODEL_PATH = "models/item_detector.pt"
+TEMPLATE_MATCH_THRESHOLD = 0.98
+```
 
-**Build/Dev:**
-- No build tools required (pure Python)
-- `run.bat` - Windows batch launcher
+**Build:**
+- `requirements.txt` - Main project dependencies
+- `browser-use-test/pyproject.toml` - Browser automation sub-project
 
 ## Platform Requirements
 
 **Development:**
-- Python 3.8+
-- Windows 10/11
-- Optional: NVIDIA GPU with CUDA for acceleration
+- Windows OS (game automation for desktop game)
+- Python 3.12+
+- Screen resolution awareness (coordinates hardcoded for 1920x1080)
 
 **Production:**
-- Windows 11 Home (current environment)
-- Game window positioned at fixed coordinates (1920x1080 screen assumed)
-- Screen resolution: 1920x1080
-- Game window region: 1200x0 to 1920x1080
+- Windows with game client running
+- 1920x1080 or compatible resolution
+- Game window must be visible at configured coordinates
 
 ---
 
-*Stack analysis: 2026-03-23*
+*Stack analysis: 2026-03-25*

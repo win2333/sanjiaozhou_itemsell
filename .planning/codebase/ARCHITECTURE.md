@@ -1,165 +1,180 @@
 # Architecture
 
-**Analysis Date:** 2026-03-23
+**Analysis Date:** 2026-03-25
 
 ## Pattern Overview
 
-**Overall:** Hybrid Detection Pipeline Architecture
+**Overall:** Event-driven automation with hybrid detection pipeline
 
 **Key Characteristics:**
-- **Detection Pipeline Pattern**: Multi-stage detection with Template/YOLO backend selection
-- **Coordinator Pattern**: `AutoSellLoop` orchestrates vision, control, and state
-- **Lazy Initialization**: Heavy components (YOLO detector) initialized on first use
-- **Configurable Backends**: Three detection modes: "template", "yolo", "hybrid"
-- **Fixed Coordinates Mode**: Optional optimization bypassing UI template recognition
+- Game automation for FPS inventory selling
+- Three-tier detection: YOLO (fast) → Template (precise) → Pipeline (filter/dedup)
+- Hotkey-controlled state machine (idle → running ↔ menu)
+- Threaded architecture for non-blocking UI responsiveness
+- Lazy initialization for heavy components (YOLO)
 
 ## Layers
 
-**Application Layer:**
-- Purpose: Entry point and state machine management
+**Main Entry (`main.py`):**
+- Purpose: Application bootstrap and state orchestration
 - Location: `main.py`
-- Contains: Component initialization, hotkey registration, state transitions (idle/running/menu)
-- Depends on: All other layers
-- Used by: Runtime (F8/F9 hotkeys)
+- Contains: Global component initialization, hotkey registration, main state machine
+- Depends on: All modules
+- Used by: OS runtime (`python main.py`)
 
-**Core Control Layer:**
-- Purpose: Main loop orchestration and state management
-- Location: `core/loop.py`
-- Contains: `AutoSellLoop`, `SellState`, `ItemRecord` dataclasses
-- Depends on: Vision (detection), Control (input), Utils (logging)
+**Configuration (`config.py`):**
+- Purpose: Centralized constants and coordinate definitions
+- Location: `config.py`
+- Contains: Thresholds, screen coordinates, timing parameters, feature flags
+- Depends on: None
+- Used by: All modules
+
+**Core Loop (`core/loop.py`):**
+- Purpose: Main automation logic - detect items, verify, sell
+- Location: `core/loop.py` (764 lines)
+- Contains: `AutoSellLoop` class with `_run_one_cycle_new()` and `_sell_item_with_log()`
+- Depends on: vision, control, config, utils.logger
 - Used by: `main.py`
 
-**Vision Layer:**
-- Purpose: Screen capture, template/YOLO detection, item candidate processing
-- Location: `vision/`
+**Vision Layer (`vision/`):**
+- Purpose: Screen capture, template matching, item detection, price OCR
+- Location: `vision/capture.py`, `vision/recognizer.py`, `vision/price_reader.py`
 - Contains:
-  - `capture.py`: ScreenCapture (thread-safe mss wrapper)
-  - `recognizer.py`: TemplateRecognizer (CPU/GPU template matching)
-  - `yolo_item_detector.py`: YoloItemDetector (YOLO inference)
-  - `hybrid_pipeline.py`: HybridPipeline (YOLO + template combination)
-  - `item_candidate_pipeline.py`: ItemCandidatePipeline (filter/dedup/sort)
-  - `item_types.py`: RawItemDetection, ItemCandidate, EliminatedCandidate, RoundSummary
-  - `candidate_utils.py`: Deduplication and sorting utilities
-- Depends on: numpy, opencv-python, torch (optional), mss
+  - `ScreenCapture` - mss-based screen capture with thread-local instances
+  - `TemplateRecognizer` - CPU (ThreadPoolExecutor) or GPU (PyTorch conv2d) template matching
+  - `PriceReader` - EasyOCR-based price reading
+- Depends on: mss, cv2, numpy, torch (optional), easyocr (optional)
 - Used by: `core/loop.py`
 
-**Control Layer:**
-- Purpose: Low-level input simulation (mouse/keyboard)
-- Location: `control/`
+**Control Layer (`control/`):**
+- Purpose: Input simulation (mouse/keyboard)
+- Location: `control/mouse.py`, `control/keyboard.py`
 - Contains:
-  - `mouse.py`: MouseController (pydirectinput wrapper)
-  - `keyboard.py`: KeyboardController (pydirectinput + pyperclip)
-- Depends on: pydirectinput, pyperclip
+  - `MouseController` - pydirectinput move/click/drag
+  - `KeyboardController` - pydirectinput key presses, Alt+D combo, clipboard
+- Depends on: pydirectinput, pyperclip (optional)
 - Used by: `core/loop.py`
 
-**Utility Layer:**
-- Purpose: Logging and debugging visualization
-- Location: `utils/`
+**Core Utilities (`core/`):**
+- Purpose: Hotkey management and menu display
+- Location: `core/hotkey.py`, `core/menu.py`
 - Contains:
-  - `logger.py`: Logger (file + console with DEBUG_MODE toggle)
-  - `debug_visualizer.py`: Debug frame visualization
-- Depends on: Standard library
-- Used by: All layers
+  - `HotkeyManager` - keyboard event listener with start/stop toggle
+  - `SimpleMenu` - statistics display with F8/F9 actions
+- Depends on: keyboard (library)
+- Used by: `main.py`
+
+**Logging (`utils/logger.py`):**
+- Purpose: Dual-output logging (file always, console conditional)
+- Location: `utils/logger.py`
+- Contains: `Logger` class with buffered file writes
+- Depends on: config (DEBUG_MODE)
+- Used by: All modules via `get_logger()`
 
 ## Data Flow
 
-**Detection Flow (Per Round):**
+**Main Loop Cycle (`_run_one_cycle_new`):**
 
-1. **Screenshot**: `ScreenCapture.capture_region()` captures backpack area (1200,0 to 1920,1080)
-2. **Detection**: Selected detector processes image:
-   - Template mode: `TemplateRecognizer.recognize_as_raw_detections()`
-   - YOLO mode: `YoloItemDetector.detect()`
-   - Hybrid mode: `HybridPipeline.process()` (YOLO coarse + template fine)
-3. **Candidate Pipeline**:
-   - Coordinate conversion (ROI local → screen absolute)
-   - Icon filter (exclude unsellable items)
+1. **Screenshot** → `capture.capture_region(BACKPACK_LEFT, BACKPACK_TOP, BACKPACK_WIDTH, BACKPACK_HEIGHT)`
+2. **Detection** → `_get_detector()` returns `HybridPipeline` or `TemplateRecognizer`
+3. **Pipeline Processing** → `ItemCandidatePipeline.process()` or `HybridPipeline.process()`:
+   - Coordinate conversion (ROI → screen)
+   - Icon filter (reject "cannot sell" icons)
    - Deduplication (center distance < threshold)
-   - Sorting (y-ascending, x-ascending)
-   - Summary generation (RoundSummary with counts)
-4. **Verification**: MSE comparison against snapshot (anti-duplicate)
-5. **Sell Operation**: Mouse move → Alt+D → Upload1 → Upload2 → Price input → Quantity
-6. **Logging**: Stats update and file output
+   - Sorting (y ascending, then x ascending)
+4. **Summary Logging** → raw/filtered/dedup/final counts
+5. **Verification** → MSE comparison against snapshot before sell
+6. **Sell** → `_sell_item_with_log()`:
+   - Mouse move to item
+   - Alt+D to list
+   - Click upload1 (fixed coords or template match)
+   - Click quantity button (x3)
+   - Enter price (backspace + click fixed coordinate)
+   - Click upload2 to confirm
+7. **Idle Escalation** → If no items found, escalate delay through `IDLE_DELAYS` list
 
-**State Flow:**
+**State Machine (main.py):**
 
 ```
-idle → (F8/auto) → running → (F8) → menu → (restart) → running
-                 → (exit) → terminated
+idle → (F8 or countdown) → running
+running → (F8) → menu
+menu → (F8) → running
+menu → (F9) → exit
 ```
 
 ## Key Abstractions
 
 **TemplateRecognizer:**
-- Purpose: Generic template matching engine (CPU/GPU)
-- Examples: `vision/recognizer.py`
-- Pattern: Strategy pattern with CPU/GPU implementations
+- Purpose: Multi-template matching with GPU acceleration
+- Examples: `vision/recognizer.py` (618 lines)
+- Pattern: Lazy-load templates on init, GPU path (PyTorch conv2d) vs CPU path (ThreadPoolExecutor + cv2.matchTemplate)
 - Interface: `recognize()`, `recognize_as_raw_detections()`, `load_templates()`
 
-**ItemCandidate:**
-- Purpose: Processed detection result with business metadata
-- Location: `vision/item_types.py`
-- Contains: Screen coordinates, click point, confidence, rank, filter status
-
-**RoundSummary:**
-- Purpose: Per-cycle statistics container
-- Location: `vision/item_types.py`
-- Contains: raw_count, filtered_count, dedup_count, final_count, first_candidate
+**ItemCandidatePipeline:**
+- Purpose: Filter/dedup/sort detected items
+- Examples: `vision/item_candidate_pipeline.py` (238 lines)
+- Pattern: Fixed 5-stage pipeline (convert → icon_filter → dedup → sort → rank)
 
 **HybridPipeline:**
-- Purpose: Combine YOLO speed + template accuracy
-- Location: `vision/hybrid_pipeline.py`
-- Interface: `process(full_screen, roi_origin_x, roi_origin_y) -> (candidates, eliminated, summary)`
+- Purpose: YOLO rough detection + template precise recognition
+- Examples: `vision/hybrid_pipeline.py` (372 lines)
+- Pattern: YOLO → ROI extraction → parallel template match → merge results
+- Interface: `process(full_screen, roi_origin_x, roi_origin_y)`
 
-**ItemCandidatePipeline:**
-- Purpose: Filter/dedup/sort raw detections
-- Location: `vision/item_candidate_pipeline.py`
-- Interface: `process(raw_detections, roi_origin_x, roi_origin_y, roi_img) -> (candidates, eliminated, summary)`
+**SellState (dataclass):**
+- Purpose: Per-session state tracking
+- Examples: `core/loop.py` lines 76-92
+- Contains: processed_positions, total_sold, is_running, consecutive_empty, idle_delay, menu_visible
+
+**ItemCandidate, RawItemDetection, RoundSummary (dataclasses):**
+- Purpose: Type-safe data containers for pipeline stages
+- Examples: `vision/item_types.py`
 
 ## Entry Points
 
 **main.py:**
 - Location: `main.py`
-- Triggers: Python interpreter execution (`python main.py`)
+- Triggers: `python main.py` from command line
 - Responsibilities:
-  - Component initialization (once)
-  - Hotkey registration (F8: start/stop, F9: exit)
-  - State machine loop (idle → running → menu)
-  - Thread management for AutoSellLoop
+  1. Register signal handler (SIGINT)
+  2. Call `init_components()` → creates `AutoSellLoop`, `SimpleMenu`, `HotkeyManager`
+  3. Start main loop in `threading.Thread`
+  4. Run F8 toggle hotkey listener
 
-**AutoSellLoop.start():**
-- Location: `core/loop.py:163`
-- Triggers: `main.py` state transitions
+**config.py:**
+- Location: `config.py`
+- Triggers: Imported by all modules
 - Responsibilities:
-  - Run one detection + sell cycle
-  - Return "continue", "restart", "exit"
+  - Define all tunable parameters (thresholds, coordinates, delays)
+  - `calculate_price()` function for symmetric subtraction pricing algorithm
 
 ## Error Handling
 
-**Strategy:** Graceful degradation with fallback modes
+**Strategy:** Graceful degradation with fallback mechanisms
 
 **Patterns:**
-- **YOLO unavailable**: Falls back to template-only mode
-- **GPU unavailable**: Falls back to CPU template matching
-- **Icon filter failure**: Skips filter, continues with all candidates
-- **Green button detection**: Falls back to fixed coordinates if green not found
-- **Empty slot detection**: Skips selling, logs warning
-- **Verification failure**: Skips candidate, records to prevent retries
+- GPU unavailable → fallback to CPU template matching (`TemplateRecognizer.__init__`)
+- OCR initialization fails → `PriceReader` returns empty results
+- Template match fails → ESC to dismiss dialog, skip item
+- Green button check fails → skip item without selling
+- Empty slot detected → skip without selling
+- Icon filter failure → continues with all candidates
 
 ## Cross-Cutting Concerns
 
-**Logging:** `utils/logger.py`
-- Approach: Dual-output (file + conditional console)
-- Format: `[timestamp] [prefix] message`
-- Modes: DEBUG_MODE controls console visibility
-- Buffers: 2-second flush interval to prevent I/O bottleneck
+**Logging:** Dual-mode Logger (file always, console only if DEBUG_MODE)
 
-**Validation:** Per-candidate verification
-- Approach: MSE image comparison against snapshot
-- Threshold: 500 (tunable via VERIFY_MSE_THRESHOLD)
-- Purpose: Prevent duplicate sells of same item
+**Validation:** MSE-based verification before selling (`compare_images_mse()` in `core/loop.py`)
 
-**Authentication:** Not applicable (game automation, not web app)
+**Authentication:** N/A - game automation without authentication
+
+**Performance Optimization:**
+- `USE_FIXED_COORDINATES=True` skips UI template matching
+- `USE_CLIPBOARD_INPUT=True` for faster price entry
+- `USE_GPU_TEMPLATE_RECOGNITION=False` (CPU mode)
+- Thread-local mss instances for screen capture (`ScreenCapture._init_thread_local()`)
+- Idle escalation delays through `IDLE_DELAYS` list
 
 ---
 
-*Architecture analysis: 2026-03-23*
+*Architecture analysis: 2026-03-25*

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python py_test/test_recognize.py)",
+      "Bash(python -m py_test.test_recognize)",
+      "Bash(python:*)",
+      "mcp__MiniMax__understand_image"
+    ]
+  }
+}

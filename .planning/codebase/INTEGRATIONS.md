@@ -1,115 +1,83 @@
 # External Integrations
 
-**Analysis Date:** 2026-03-23
+**Analysis Date:** 2026-03-25
 
-## APIs & External Services
+## Computer Vision & OCR
 
-**No External APIs Detected:**
-- Standalone desktop automation
-- No cloud services
-- No third-party web APIs
-- No network requests
+**Local OCR (Self-hosted):**
+- EasyOCR 1.7.0+ - Price recognition from game screenshots
+  - Implementation: `vision/price_reader.py`
+  - GPU mode: Enabled by default (`gpu=True`)
+  - Languages: Chinese (ch_sim), English
 
-## Data Storage
+**YOLO Object Detection (Local):**
+- Ultralytics YOLO - Item detection using trained model
+  - Implementation: `vision/yolo_item_detector.py`
+  - Model: `models/item_detector.pt`
+  - Optional - only used when `ITEM_DETECTOR_MODE="yolo"` or `"hybrid"`
 
-**Databases:**
-- None - In-memory processing only
-- No persistent data storage
+## Browser Automation
 
-**File Storage:**
-- Local filesystem only
-  - `templates/` - PNG images for template matching
-  - `logs/` - Text log files (selling logs)
-  - `debug/` - Debug output images
-  - `models/` - Optional YOLO model files
+**Framework:**
+- browser-use 0.12.2+ - AI-powered browser automation
+  - Location: `browser-use-test/` sub-directory
+  - Project: `pyproject.toml`
+  - Purpose: Automating web browsing tasks (Bilibili interaction)
 
-**Caching:**
-- None - No external cache services
+**AI Integration:**
+- Anthropic Claude API - Powering browser automation agent
+  - Implementation: `browser-use-test/bilibili_favorites.py`
+  - Model: claude-sonnet-4-5
+  - API Key: Uses environment variable / local proxy
+  - Base URL: `http://127.0.0.1:5000` (local proxy)
 
-## Input/Output Hardware
+**Browser:**
+- Google Chrome - Browser automation target
+  - User data directory: `C:\Users\Eureka\AppData\Local\Google\Chrome\User Data`
+  - Profile: `Profile 3`
+  - Uses existing Chrome profile for authentication
 
-**Screen Capture:**
-- mss library - Direct screen capture
-- No game API integration
-- No memory reading
+## Input Control APIs
 
-**Input Control:**
-- pydirectinput - DirectInput game controller simulation
-- pyautogui - Fallback GUI automation
-- pywin32 - Windows SendInput API
+**Mouse/Keyboard:**
+- pydirectinput - Direct input simulation (game-compatible)
+- pyautogui - General input control (fallback)
 - keyboard - Global hotkey registration
-- No game memory modification
 
-**OCR:**
-- EasyOCR - Local text recognition (no cloud API)
-  - Languages: Chinese (simplified), English
-  - Models: Downloaded on first use
+**Windows API:**
+- pywin32 - Cursor position, Windows-specific features
+  - Used in `control/mouse.py` for `GetCursorPos()`
 
-## Authentication & Identity
+## Clipboard
 
-**Auth Provider:**
-- None - No authentication required
-- Single-user desktop automation tool
+**Price Input:**
+- pyperclip - Clipboard operations
+  - Used when `USE_CLIPBOARD_INPUT = True` in config
 
-## Monitoring & Observability
+## No External Services
 
-**Error Tracking:**
-- None - No external error tracking
-- Local logging to `logs/` directory
+**Main Game Automation Project:**
+- No cloud APIs
+- No external databases
+- No authentication services
+- All processing is local
 
-**Logs:**
-- Text files: `logs/selling_YYYYMMDD_HHMMSS.txt`
-- Custom Logger class in `utils/logger.py`
-- Buffered file writing with timestamp prefixes
+**Data Storage:**
+- Local file system only
+- Template images: `templates/` directory
+- Debug output: `debug/` directory
+- Logs: `logs/` directory
+- YOLO model: `models/item_detector.pt`
 
-**Debug Output:**
-- Debug images: `debug/debug_*.png`
-- Controlled via `config.py` (SAVE_DEBUG_IMAGES flag)
+## Web Access
 
-## CI/CD & Deployment
+**Proxy Configuration:**
+- Local proxy for AI API calls: `http://127.0.0.1:5000`
+  - Used in `browser-use-test/bilibili_favorites.py`
 
-**Hosting:**
-- None - Desktop application only
-- Manual execution via `main.py` or `run.bat`
-
-**CI Pipeline:**
-- None - No automated testing pipeline
-
-## Environment Configuration
-
-**Required env vars:**
-- None detected
-
-**Secrets location:**
-- No secrets required
-- No credential storage
-
-## Webhooks & Callbacks
-
-**Incoming:**
-- None - No HTTP endpoints
-
-**Outgoing:**
-- None - No network requests
-
-## Optional Model Files
-
-**YOLO Object Detection (experimental):**
-- Model file: `models/item_detector.pt`
-- Loaded if `ITEM_DETECTOR_MODE = "yolo"` or `"hybrid"`
-- Falls back to template matching if unavailable
-
-## Platform-Specific Features
-
-**Windows APIs:**
-- pywin32 (SendInput) - Mouse/keyboard simulation
-- threading.local - Thread-safe screen capture
-- signal.SIGINT - Graceful shutdown handler
-
-**Chinese Font Support:**
-- System fonts: Microsoft YaHei, SimHei, FangSong, SimSun
-- Used for debug image annotations
+**Cookies:**
+- Browser cookies imported from Chrome profile for web authentication
 
 ---
 
-*Integration audit: 2026-03-23*
+*Integration audit: 2026-03-25*

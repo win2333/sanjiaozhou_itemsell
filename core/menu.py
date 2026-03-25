@@ -50,5 +50,5 @@ class SimpleMenu:
         print(f"  平均速度:    {avg_time:.1f} 秒/个")
         print("=" * 40)
         print()
-        print("  [F8] 重新开始   [Ctrl+C] 退出程序")
+        print("  [F8] 重新开始   [F9] 退出程序")
         print()

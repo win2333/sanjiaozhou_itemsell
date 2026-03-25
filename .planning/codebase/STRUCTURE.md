@@ -1,234 +1,212 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-03-23
+**Analysis Date:** 2026-03-25
 
 ## Directory Layout
 
 ```
 sanjiaozhouGame/
-├── main.py                    # Application entry point
-├── config.py                  # Global configuration and constants
-├── core/                      # Core orchestration layer
-│   ├── loop.py               # Main auto-sell loop
-│   ├── hotkey.py             # Keyboard hotkey manager
-│   └── menu.py               # Interactive menu system
-├── vision/                    # Computer vision layer
-│   ├── capture.py            # Screen capture (mss wrapper)
-│   ├── recognizer.py         # Template matching engine
-│   ├── price_reader.py       # OCR for price recognition
-│   ├── item_types.py         # Data classes (ItemCandidate, etc.)
-│   ├── item_candidate_pipeline.py  # Filter/dedup/sort pipeline
-│   ├── candidate_utils.py    # Deduplication and sorting
-│   ├── yolo_item_detector.py # YOLO inference wrapper
-│   ├── hybrid_pipeline.py    # YOLO + template hybrid
-│   └── __init__.py
-├── control/                   # Input control layer
-│   ├── mouse.py              # Mouse controller (pydirectinput)
-│   ├── keyboard.py           # Keyboard controller
-│   └── __init__.py
-├── utils/                     # Utility layer
-│   ├── logger.py             # Logging system
-│   ├── debug_visualizer.py   # Debug frame visualization
-│   └── __init__.py
-├── templates/                 # Template images (322+ items + UI)
-│   ├── ui/                   # UI element templates (upload1, upload2, etc.)
-│   ├── 物品名称.png          # Item template images
-│   └── icon_01.png           # Unsellable item icon
-├── py_test/                   # Test and debugging tools
-│   ├── test_screenshot.py    # Screen capture test
-│   ├── test_recognize.py     # Template recognition test
-│   ├── test_recognizer_backend.py  # GPU/CPU backend test
-│   ├── test_item_candidate_pipeline.py  # Pipeline test
-│   ├── test_loop_integration.py  # Loop integration test
-│   ├── test_price_method.py   # Price input method test
-│   ├── test_template_on_game_screenshot.py  # E2E recognition test
-│   ├── crop_templates.py     # Template cropping utility
-│   ├── debug_markers.py      # UI coordinate markers
-│   ├── debug_coords.py       # Coordinate debugging
-│   ├── find_coords.py        # Coordinate finder
-│   └── nul                   # Placeholder
-├── debug/                     # Debug output directory
-├── logs/                      # Log files (auto-generated)
-├── models/                    # ML models (YOLO weights)
-├── backgrounds/               # Background images for testing
-├── datasets/                  # Training data
-├── runs/                      # YOLO training runs
+├── main.py                    # Main entry point
+├── config.py                  # Global configuration
+├── core/                      # Core automation logic
+│   ├── __init__.py
+│   ├── loop.py               # AutoSellLoop (main cycle, 764 lines)
+│   ├── hotkey.py             # HotkeyManager
+│   └── menu.py               # SimpleMenu
+├── vision/                    # Visual recognition
+│   ├── __init__.py
+│   ├── capture.py            # ScreenCapture
+│   ├── recognizer.py         # TemplateRecognizer (CPU/GPU, 618 lines)
+│   ├── price_reader.py       # PriceReader (EasyOCR)
+│   ├── item_types.py         # Dataclasses (ItemCandidate, etc.)
+│   ├── item_candidate_pipeline.py  # Filter/dedup pipeline (238 lines)
+│   ├── candidate_utils.py    # Shared dedup/sort functions
+│   ├── yolo_item_detector.py # YoloItemDetector
+│   └── hybrid_pipeline.py    # HybridPipeline (YOLO+template, 372 lines)
+├── control/                   # Input control
+│   ├── __init__.py
+│   ├── mouse.py              # MouseController
+│   └── keyboard.py           # KeyboardController
+├── utils/                     # Utilities
+│   ├── logger.py             # Logger (dual-output)
+│   └── debug_visualizer.py   # Debug frame annotation
+├── templates/                 # Template images
+│   ├── ui/                   # UI element templates
+│   └── [322+ item templates] # Item screenshots
+├── debug/                     # Debug output images
+│   └── round_NNNN/           # Per-round debug frames
+├── logs/                      # Log files
+│   └── selling_YYYYMMDD_HHMMSS.txt
+├── py_test/                   # Test utilities
+│   ├── test_screenshot.py
+│   ├── test_recognize.py
+│   ├── test_item_candidate_pipeline.py
+│   ├── test_loop_integration.py
+│   ├── test_recognizer_backend.py
+│   ├── test_price_method.py
+│   ├── test_template_on_game_screenshot.py
+│   ├── crop_templates.py
+│   ├── debug_markers.py
+│   ├── debug_coords.py
+│   ├── find_coords.py
+│   └── nul
+├── browser-use-test/          # Browser automation tests (unrelated)
+│   ├── bilibili_favorites.py
+│   ├── test_proxy.py
+│   ├── test_browser_use.py
+│   └── src/
+├── models/                    # YOLO model weights
 ├── tools/                     # Standalone tools
-├── docs/                      # Documentation
-├── browser-use-test/          # Separate project (git ignored)
-├── .worktrees/                # Git worktrees (experiments)
+│   └── verify_backgrounds.py
 └── .planning/                 # GSD planning docs
+    └── codebase/
+        ├── ARCHITECTURE.md
+        └── STRUCTURE.md
 ```
 
 ## Directory Purposes
 
-**Core:**
-- Purpose: Orchestrate detection and selling workflow
-- Contains: Main loop, hotkey management, menu system
-- Key files: `core/loop.py` (AutoSellLoop class)
+**Root (`main.py`, `config.py`):**
+- Purpose: Application bootstrap and global configuration
+- Contains: Entry point, feature flags, screen coordinates, price algorithm
 
-**Vision:**
-- Purpose: All computer vision operations
-- Contains: Capture, detection, candidate processing
-- Key files: `vision/recognizer.py` (template matching), `vision/hybrid_pipeline.py` (detection strategy)
+**`core/`:**
+- Purpose: Core automation orchestration
+- Contains: Main loop, hotkey handling, menu system
+- Key files: `loop.py` (764 lines - largest file)
 
-**Control:**
-- Purpose: Low-level input simulation
-- Contains: Mouse and keyboard controllers
-- Key files: `control/mouse.py`, `control/keyboard.py`
+**`vision/`:**
+- Purpose: All visual recognition capabilities
+- Contains: Screen capture, template matching, OCR, YOLO, hybrid pipelines
+- Key files: `recognizer.py` (618 lines), `hybrid_pipeline.py` (372 lines)
 
-**Utils:**
-- Purpose: Shared utilities (logging, visualization)
-- Key files: `utils/logger.py`
+**`control/`:**
+- Purpose: Input simulation
+- Contains: Mouse and keyboard controllers using pydirectinput
 
-**Templates:**
-- Purpose: Reference images for recognition
-- Contains: 322+ item templates, UI element templates
-- Format: PNG files with Chinese names
+**`utils/`:**
+- Purpose: Shared utilities
+- Contains: Logger with buffered file output
 
-**Py_test:**
-- Purpose: Testing and debugging utilities
-- Contains: Standalone test scripts, coordinate tools
-- Pattern: Each file tests specific component
+**`templates/`:**
+- Purpose: Reference images for template matching
+- Contains: 322+ item templates + UI element templates
+
+**`py_test/`:**
+- Purpose: Test and debugging utilities
+- Contains: Screenshot tests, coordinate finders, template cropping
+
+**`browser-use-test/`:**
+- Purpose: Unrelated browser automation project
+- Note: Gitignored, separate from main project
 
 ## Key File Locations
 
 **Entry Points:**
-- `main.py`: Application startup and state machine
-- `core/loop.py:AutoSellLoop.start()`: Main execution method
+- `main.py`: Application entry, state machine, component initialization
+- `config.py`: Configuration constants (imported by all modules)
 
 **Configuration:**
-- `config.py`: All configuration constants and parameters
-  - Detection thresholds (TEMPLATE_MATCH_THRESHOLD, YOLO_CONFIDENCE_THRESHOLD)
-  - Coordinates (BACKPACK_*, UPLOAD1_*, UPLOAD2_*)
-  - Mode switches (USE_FIXED_COORDINATES, ITEM_DETECTOR_MODE)
-  - Price calculation (calculate_price function)
+- `config.py`: Thresholds, coordinates, timeouts, feature flags
 
 **Core Logic:**
-- `core/loop.py`:
-  - `AutoSellLoop` class (lines 107-738)
-  - `_run_one_cycle_new()`: One detection + sell cycle (lines 252-428)
-  - `_sell_item_with_log()`: Single item sell operation (lines 462-577)
-  - `_verify_candidate()`: MSE verification (lines 430-459)
+- `core/loop.py`: Main selling loop (AutoSellLoop class)
+- `core/hotkey.py`: HotkeyManager (keyboard event handling)
+- `core/menu.py`: SimpleMenu (stats display)
 
-**Vision Processing:**
-- `vision/recognizer.py:TemplateRecognizer`:
-  - `recognize()`: Full detection with GPU/CPU selection (line 176)
-  - `_recognize_gpu()`: GPU accelerated matching (line 239)
-  - `_recognize_cpu()`: CPU multi-threaded matching (line 344)
-- `vision/hybrid_pipeline.py:HybridPipeline`:
-  - `process()`: YOLO + template combination (line 71)
-- `vision/item_candidate_pipeline.py:ItemCandidatePipeline`:
-  - `process()`: Filter/dedup/sort pipeline (line 52)
-
-**Data Types:**
-- `vision/item_types.py`:
-  - `RawItemDetection`: Raw detector output
-  - `ItemCandidate`: Processed candidate with screen coordinates
-  - `EliminatedCandidate`: Filtered-out candidate with reason
-  - `RoundSummary`: Per-cycle statistics
+**Vision:**
+- `vision/capture.py`: ScreenCapture (mss-based)
+- `vision/recognizer.py`: TemplateRecognizer (CPU/GPU template matching)
+- `vision/price_reader.py`: PriceReader (EasyOCR price reading)
+- `vision/item_types.py`: Data classes for pipeline
+- `vision/item_candidate_pipeline.py`: Filter/dedup pipeline
+- `vision/hybrid_pipeline.py`: YOLO + template hybrid
+- `vision/yolo_item_detector.py`: YOLO wrapper
+- `vision/candidate_utils.py`: Shared dedup/sort utilities
+- `vision/debug_visualizer.py`: Debug frame annotation
 
 **Control:**
-- `control/mouse.py:MouseController`:
-  - `move_to()`, `click()`, `double_click()`, `drag()`, `get_position()`
-- `control/keyboard.py:KeyboardController`:
-  - `press()`, `combo()`, `type_text()`, `alt_d()`, `copy_to_clipboard()`
+- `control/mouse.py`: MouseController (pydirectinput)
+- `control/keyboard.py`: KeyboardController (pydirectinput + pyperclip)
 
-**Logging:**
-- `utils/logger.py:Logger`:
-  - Methods: `log()`, `step()`, `log_only()`, `print_only()`, `stats()`
-  - Buffer: 2-second flush interval
-  - File: `logs/selling_YYYYMMDD_HHMMSS.txt`
+**Utilities:**
+- `utils/logger.py`: Logger (dual-output: file always, console conditional)
+- `utils/debug_visualizer.py`: Debug frame annotation (NOT in vision/)
 
 ## Naming Conventions
 
 **Files:**
-- Python modules: `snake_case.py` (e.g., `item_candidate_pipeline.py`)
-- Template images: `物品名称.png` (Chinese, with optional color suffix)
-- Data files: Lowercase with underscores
+- `snake_case.py`: All Python files use snake_case
+- `lower_snake_case`: Modules and utilities
 
-**Directories:**
-- All directories: `kebab-case` or `lowercase` (mixed usage)
-- Resource dirs: `templates/`, `models/`, `datasets/`, `backgrounds/`
-- Output dirs: `debug/`, `logs/`, `runs/`
+**Functions:**
+- `snake_case`: All functions and methods
+- `_prefixed_with_underscore`: "Private" internal functions (e.g., `_run_one_cycle_new`, `_sell_item_with_log`)
 
 **Classes:**
-- PascalCase: `TemplateRecognizer`, `AutoSellLoop`, `ItemCandidatePipeline`
-- Data classes: PascalCase: `ItemCandidate`, `RoundSummary`, `RawItemDetection`
-
-**Functions/Methods:**
-- snake_case: `recognize()`, `deduplicate()`, `sort_candidates()`
-- Private methods: `_underscore_prefix()`
+- `PascalCase`: All classes (e.g., `AutoSellLoop`, `TemplateRecognizer`, `ScreenCapture`)
 
 **Variables:**
-- snake_case: `item_recognizer`, `raw_detections`, `click_x`
-- Constants: `UPPER_SNAKE_CASE`: `TEMPLATE_MATCH_THRESHOLD`, `BACKPACK_LEFT`
-- Dataclass fields: snake_case: `screen_x`, `screen_y`, `passed_icon_filter`
+- `snake_case`: All variables (e.g., `item_recognizer`, `consecutive_empty`)
+- `UPPER_SNAKE_CASE`: Constants in `config.py` (e.g., `TEMPLATE_MATCH_THRESHOLD`, `IDLE_DELAYS`)
+
+**Dataclasses:**
+- `PascalCase` with `@dataclass` decorator (e.g., `SellState`, `ItemCandidate`, `MatchResult`)
 
 ## Where to Add New Code
 
-**New Detection Backend:**
-- Primary: Create new file in `vision/`
-- Example: `vision/new_detector.py`
-- Register in `core/loop.py:_get_detector()` (line 221)
+**New Feature (detection/selling logic):**
+- Primary code: `core/loop.py` (add method to `AutoSellLoop` or modify `_sell_item_with_log`)
+- Tests: `py_test/test_loop_integration.py`
 
-**New Filter Stage:**
-- Primary: Add method to `vision/item_candidate_pipeline.py`
-- Example: `_apply_quality_filter()`
-- Modify `process()` to call new stage (line 52)
+**New Vision Module:**
+- Implementation: `vision/` (create new file or extend existing)
+- If adding new detector type: Consider `HybridPipeline` integration in `_get_detector()`
 
 **New Control Action:**
-- Primary: `control/mouse.py` or `control/keyboard.py`
-- Example: Add `scroll()` to `MouseController`
+- Implementation: `control/mouse.py` or `control/keyboard.py`
+- Usage: `core/loop.py`
 
-**New Utility:**
-- Primary: `utils/`
-- Example: `utils/image_utils.py` for shared image operations
+**Configuration Changes:**
+- `config.py`: Add new constants (UPPER_SNAKE_CASE)
+- Consider adding feature flag for gradual rollout
 
-**New Test:**
-- Primary: `py_test/`
-- Pattern: Standalone script, e.g., `py_test/test_new_feature.py`
-
-**New Template:**
-- Location: `templates/`
-- Naming: `物品名称.png` or `物品名称(颜色).png`
-- Format: PNG with transparency support
+**Testing:**
+- Test utilities: `py_test/`
+- Run individual tests: `python py_test/test_xxx.py`
 
 ## Special Directories
 
-**Templates:**
-- Purpose: Reference images for item and UI recognition
-- Contains: 322+ item templates, UI templates, icon template
-- Generated: No (manually created/captured)
-- Committed: Yes (in git)
+**`templates/`:**
+- Purpose: Reference images for item recognition
+- Contains: 322+ PNG files named with item names (Chinese supported)
+- Generated: No (manually curated screenshots)
+- Committed: Yes (version controlled)
 
-**Debug:**
-- Purpose: Debug output images and visualizations
+**`debug/`:**
+- Purpose: Debug output images
+- Structure: `debug/round_NNNN/` with per-round frames (00_original.png, 01_yolo.png, 02_pipeline.png)
+- Generated: Yes (runtime, controlled by `SAVE_DEBUG_IMAGES`)
+- Committed: No (gitignored)
+
+**`logs/`:**
+- Purpose: Runtime logs
+- Format: `selling_YYYYMMDD_HHMMSS.txt`
 - Generated: Yes (runtime)
-- Committed: No (.gitignore)
+- Committed: No (gitignored)
 
-**Logs:**
-- Purpose: Runtime log files
-- Generated: Yes (runtime, auto-named by timestamp)
-- Committed: No (.gitignore)
-
-**Models:**
-- Purpose: ML model weights (YOLO)
+**`models/`:**
+- Purpose: YOLO model weights
 - Contains: `item_detector.pt`
 - Generated: No (trained separately)
 - Committed: Yes
 
-**Py_test:**
-- Purpose: Standalone testing scripts
-- Contains: 12+ test/debug scripts
+**`py_test/`:**
+- Purpose: Test and debugging utilities
+- Contains: 12 standalone test scripts
 - Pattern: Each tests one component independently
-- No pytest/unittest framework, just standalone scripts
-
-**Docs:**
-- Purpose: Project documentation
-- Contains: AI context files, architecture docs
-- Note: GSD planning docs go in `.planning/codebase/`
+- Note: No pytest/unittest framework - standalone scripts only
 
 ---
 
-*Structure analysis: 2026-03-23*
+*Structure analysis: 2026-03-25*

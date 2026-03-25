@@ -8,7 +8,7 @@ from pathlib import Path
 
 from vision.capture import ScreenCapture
 from vision.recognizer import TemplateRecognizer
-from vision.price_reader import PriceReader, get_ocr_reader
+from vision.price_reader import PriceReader
 from control.mouse import MouseController
 from control.keyboard import KeyboardController
 from core.hotkey import HotkeyManager
@@ -19,6 +19,9 @@ from config import (
     UI_TEMPLATE_THRESHOLD,
     TEMPLATES_DIR,
     UI_TEMPLATES_DIR,
+    USE_GPU_TEMPLATE_RECOGNITION,
+    USE_FIXED_COORDINATES,
+    DEBUG_MODE,
 )
 
 
@@ -48,20 +51,25 @@ def init_components() -> tuple:
 
     # 加载物品模板
     item_recognizer = TemplateRecognizer(
-        str(TEMPLATES_DIR), threshold=TEMPLATE_MATCH_THRESHOLD
+        str(TEMPLATES_DIR), threshold=TEMPLATE_MATCH_THRESHOLD, use_gpu=USE_GPU_TEMPLATE_RECOGNITION
     )
     item_templates = item_recognizer.load_templates()
     print(f"已加载 {len(item_templates)} 个物品模板")
+    print(f"物品模板识别后端: {'GPU' if item_recognizer.use_gpu else 'CPU'}")
 
     if not item_templates:
         print("\n警告: 没有找到物品模板图片！")
         print(f"请将物品截图放到: {TEMPLATES_DIR}")
 
-    # 加载UI模板
+    # 加载UI模板（固定坐标模式下跳过）
     ui_recognizer = TemplateRecognizer(
-        str(UI_TEMPLATES_DIR), threshold=UI_TEMPLATE_THRESHOLD
+        str(UI_TEMPLATES_DIR), threshold=UI_TEMPLATE_THRESHOLD, use_gpu=USE_GPU_TEMPLATE_RECOGNITION
     )
-    ui_templates = ui_recognizer.load_templates()
+    if USE_FIXED_COORDINATES:
+        print("UI模板: 跳过（使用固定坐标）")
+    else:
+        ui_templates = ui_recognizer.load_templates()
+        print(f"UI模板识别后端: {'GPU' if ui_recognizer.use_gpu else 'CPU'}")
 
     # 初始化价格识别器
     price_reader = PriceReader()
@@ -89,18 +97,14 @@ def main():
     """主函数"""
     signal.signal(signal.SIGINT, signal_handler)
 
-    print("=" * 50)
-    print("FPS 游戏自动卖货助手")
-    print("按 F8 开始/停止")
-    print("=" * 50)
-
-    # 预加载 OCR（首次运行会下载模型，需等待）
-    print("\n正在初始化 OCR（首次运行会下载模型，请稍候）...")
-    ocr = get_ocr_reader()
-    if ocr is None:
-        print("[警告] OCR 初始化失败，价格识别功能不可用")
+    if DEBUG_MODE:
+        print("=" * 50)
+        print("【DEBUG 模式】FPS 游戏自动卖货助手")
+        print("按 F8 开始/停止")
+        print("=" * 50)
     else:
-        print("OCR 初始化完成！")
+        print("FPS 游戏自动卖货助手")
+        print("按 F8 暂停")
 
     # 初始化组件
     loop, menu, hotkey = init_components()
@@ -108,12 +112,12 @@ def main():
     # 状态: 'idle', 'running', 'menu'
     state = 'idle'
     menu_action = None
+    _during_startup = True  # 第一次启动期间禁止重复倒计时
 
     # 菜单模式下的热键回调
     def on_restart():
-        nonlocal menu_action, state
+        nonlocal menu_action
         menu_action = "restart"
-        state = 'running'
 
     def on_exit():
         nonlocal menu_action
@@ -121,15 +125,13 @@ def main():
 
     # 运行模式下的热键回调
     def on_toggle():
-        nonlocal state
+        nonlocal state, _during_startup
         if state == 'running':
             state = 'menu'
             loop.stop()
             menu.show()
-        else:
+        elif not _during_startup:
             state = 'running'
-            thread = threading.Thread(target=_run_loop, args=(loop, lambda: state == 'running'), daemon=True)
-            thread.start()
 
     # 注册热键
     hotkey.register_start_stop("f8", on_toggle, on_toggle)
@@ -152,6 +154,10 @@ def main():
             start_menu_listener()
             if menu_action == "restart":
                 print("\n重新开始...")
+                _countdown(3)
+                thread = threading.Thread(target=_run_loop, args=(loop, lambda: state == 'running'), daemon=True)
+                thread.start()
+                hotkey.start_listening()
             elif menu_action == "exit":
                 print("\n正在退出...")
                 from utils.logger import close_logger
@@ -159,7 +165,28 @@ def main():
                 hotkey.stop_listening()
                 sys.exit(0)
         else:  # idle
-            hotkey.start_listening()
+            if _during_startup:
+                # 第一次：自动倒计时启动
+                _during_startup = False
+                _countdown(3)
+                state = 'running'
+                thread = threading.Thread(target=_run_loop, args=(loop, lambda: state == 'running'), daemon=True)
+                thread.start()
+                hotkey.start_listening()
+            else:
+                # 暂停后再按 F8
+                print("请按 F8 继续...")
+                hotkey.start_listening()
+
+
+def _countdown(seconds: int = 3) -> None:
+    """显示倒计时"""
+    import sys
+    print("请等待，3秒钟后自动开始...")
+    for i in range(seconds, 0, -1):
+        print(f"  {i}...", end="", flush=True)
+        time.sleep(1)
+    print("\r      \r", end="", flush=True)
 
 
 def _run_loop(loop: AutoSellLoop, is_running_check):

@@ -1,4 +1,8 @@
 """物品识别测试 - 支持中文标签显示，自动执行"""
+
+import sys
+sys.path.insert(0, '.')
+
 import cv2
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime
@@ -23,17 +27,16 @@ def main():
     # 加载模板
     print("\n[1/4] 正在加载模板...")
     recognizer = TemplateRecognizer(
-        str(TEMPLATES_DIR), threshold=TEMPLATE_MATCH_THRESHOLD
+        str(TEMPLATES_DIR), threshold=TEMPLATE_MATCH_THRESHOLD, use_gpu=False
     )
     templates = recognizer.load_templates()
     print(f"      已加载 {len(templates)} 个物品模板")
     print(f"      匹配阈值: {TEMPLATE_MATCH_THRESHOLD}")
 
-    # 截图
+    # 截图（右半边 x>=1150），与 recognize() 逻辑一致
     print("\n[2/4] 正在截图...")
     capture = ScreenCapture()
     screen_width, screen_height = capture.get_screen_size()
-    # 右半边区域（x >= 1150），与 recognize() 逻辑一致
     right_x = 1150
     image = capture.capture_region(right_x, 0, screen_width - right_x, screen_height)
     print(f"      右半边区域尺寸: {image.shape}")

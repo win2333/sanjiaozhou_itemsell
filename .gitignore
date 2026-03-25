@@ -31,3 +31,4 @@ nul
 
 # Git worktrees
 .worktrees/
+.gstack/

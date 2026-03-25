@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from config import DEBUG_MODE
+
 
 class Logger:
     """日志记录器"""
@@ -29,16 +31,13 @@ class Logger:
         self._last_flush = time.time()
 
     def _write(self, text: str) -> None:
-        """写入日志（控制台 + 文件）
-
-        Args:
-            text: 日志内容
-        """
-        # 控制台输出
-        print(text)
-
-        # 文件缓冲
+        """写入日志（DEBUG模式写文件+控制台，正式模式仅写文件）"""
+        # 文件缓冲 - 始终写入
         self._buffer.append(text)
+
+        # 控制台输出 - 仅 DEBUG 模式
+        if DEBUG_MODE:
+            print(text)
 
         # 定期刷新
         now = time.time()
@@ -48,8 +47,8 @@ class Logger:
     def _flush(self) -> None:
         """刷新缓冲区到文件"""
         if self._buffer:
-            with open(self.log_file, 'a', encoding='utf-8') as f:
-                f.write('\n'.join(self._buffer) + '\n')
+            with open(self.log_file, "a", encoding="utf-8") as f:
+                f.write("\n".join(self._buffer) + "\n")
             self._buffer.clear()
             self._last_flush = time.time()
 
@@ -60,22 +59,20 @@ class Logger:
     # ========== 通用日志方法 ==========
 
     def log(self, prefix: str, message: str) -> None:
-        """通用日志
-
-        Args:
-            prefix: 日志前缀（如 [识别]）
-            message: 日志内容
-        """
+        """通用日志 - 写入文件，正式模式不输出控制台"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self._write(f"[{timestamp}] {prefix} {message}")
+        self._buffer.append(f"[{timestamp}] {prefix} {message}")
+        self._flush()
 
     def separator(self) -> None:
-        """分隔线"""
-        self._write("━" * 60)
+        """分隔线 - 写入文件"""
+        self._buffer.append("━" * 60)
+        self._flush()
 
     def stats(self, message: str) -> None:
-        """统计信息"""
-        self._write(f"[统计] {message}")
+        """统计信息 - 写入文件"""
+        self._buffer.append(f"[统计] {message}")
+        self._flush()
 
     # ========== 便捷方法 ==========
 
@@ -107,13 +104,38 @@ class Logger:
         """警告"""
         self.log("[警告]", message)
 
+    def scan(self, message: str) -> None:
+        """扫描日志 - YOLO/识别阶段输出"""
+        self.log("[扫描]", message)
+
+    def progress(self, message: str) -> None:
+        """进度日志 - 写入文件，DEBUG_MODE下同时输出到控制台"""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self._buffer.append(f"[{timestamp}] [进度] {message}")
+        self._flush()
+        if DEBUG_MODE:
+            print(f"[{timestamp}] {message}")
+
     def error(self, message: str) -> None:
         """错误"""
         self.log("[错误]", message)
 
     def print_only(self, message: str) -> None:
-        """只输出到控制台，不写入文件"""
-        print(message)
+        """输出到控制台，并写入文件（DEBUG_MODE下控制台输出，正式模式只写文件）"""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self._buffer.append(f"[{timestamp}] [控制台] {message}")
+        self._flush()
+        if DEBUG_MODE:
+            print(message)
+
+    def step(self, message: str) -> None:
+        """步骤日志 - 写入文件，DEBUG模式同时输出控制台"""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        line = f"[{timestamp}] [步骤] {message}"
+        self._buffer.append(line)
+        self._flush()
+        if DEBUG_MODE:
+            print(line)
 
     def log_only(self, prefix: str, message: str) -> None:
         """只写入日志文件，不输出到控制台
