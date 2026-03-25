@@ -35,12 +35,12 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DET-01 | 1 | — |
-| DET-02 | 1 | — |
-| DET-03 | 1 | — |
-| DET-04 | 1 | — |
-| DEBUG-01 | 2 | — |
-| DEBUG-02 | 2 | — |
-| DEBUG-03 | 2 | — |
-| DEBUG-04 | 3 | — |
-| DEBUG-05 | 3 | — |
+| DET-01 | Phase 1 | Pending |
+| DET-02 | Phase 1 | Pending |
+| DET-03 | Phase 1 | Pending |
+| DET-04 | Phase 1 | Pending |
+| DEBUG-01 | Phase 2 | Pending |
+| DEBUG-02 | Phase 2 | Pending |
+| DEBUG-03 | Phase 2 | Pending |
+| DEBUG-04 | Phase 3 | Pending |
+| DEBUG-05 | Phase 3 | Pending |
