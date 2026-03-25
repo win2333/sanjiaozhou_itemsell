@@ -23,7 +23,10 @@
 4. Color verification threshold configurable via `config.py` (starting at 0.95)
 5. Bot completes at least 5 consecutive scan cycles without crash or error
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 01-PLAN.md — Fix CPU crash, consolidate thresholds
 
 ---
 
@@ -66,7 +69,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Bug Fixes & Debug Infrastructure | 0/1 | Not started | - |
+| 1. Bug Fixes & Debug Infrastructure | 0/1 | Planned | - |
 | 2. Debug Visibility | 0/1 | Not started | - |
 | 3. Advanced Debug & Polish | 0/1 | Not started | - |
 
