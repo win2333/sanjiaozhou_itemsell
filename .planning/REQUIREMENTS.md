@@ -11,9 +11,9 @@
 
 ### Debug Visibility
 
-- [ ] **DEBUG-01**: Detection funnel text log — output "YOLO:12 → Template:8 → IconFilter:6 → Dedup:5 → Final:3" after each scan cycle
-- [ ] **DEBUG-02**: Stage timing breakdown — log time spent in each pipeline stage (capture, YOLO, template, filter, dedup)
-- [ ] **DEBUG-03**: Enhanced annotated screenshots — label ALL detection boxes with template name
+- [x] **DEBUG-01**: Detection funnel text log — output "YOLO:12 → Template:8 → IconFilter:6 → Dedup:5 → Final:3" after each scan cycle
+- [x] **DEBUG-02**: Stage timing breakdown — log time spent in each pipeline stage (capture, YOLO, template, filter, dedup)
+- [x] **DEBUG-03**: Enhanced annotated screenshots — label ALL detection boxes with template name
 - [ ] **DEBUG-04**: Confidence histogram on startup — show confidence distribution from last N cycles to guide threshold tuning
 - [ ] **DEBUG-05**: Silent failure detector — warn after N consecutive zero-detection cycles
 
@@ -39,8 +39,8 @@
 | DET-02 | Phase 1 | ✓ Complete |
 | DET-03 | Phase 1 | ✓ Complete |
 | DET-04 | Phase 1 | ✓ Complete |
-| DEBUG-01 | Phase 2 | Pending |
-| DEBUG-02 | Phase 2 | Pending |
-| DEBUG-03 | Phase 2 | Pending |
+| DEBUG-01 | Phase 2 | ✓ Complete |
+| DEBUG-02 | Phase 2 | ✓ Complete |
+| DEBUG-03 | Phase 2 | ✓ Complete |
 | DEBUG-04 | Phase 3 | Pending |
 | DEBUG-05 | Phase 3 | Pending |

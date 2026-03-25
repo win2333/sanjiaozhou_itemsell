@@ -2,8 +2,8 @@
 
 ## Phases
 
-- [ ] **Phase 1: Bug Fixes & Debug Infrastructure** — Fix CPU crash, consolidate thresholds, lower strict thresholds
-- [ ] **Phase 2: Debug Visibility** — Detection funnel log, stage timing, enhanced screenshots
+- [x] **Phase 1: Bug Fixes & Debug Infrastructure** — Fix CPU crash, consolidate thresholds, lower strict thresholds
+- [x] **Phase 2: Debug Visibility** — Detection funnel log, stage timing, enhanced screenshots
 - [ ] **Phase 3: Advanced Debug & Polish** — Confidence histogram, silent failure detector
 
 ## Phase Details
@@ -47,7 +47,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 02-PLAN.md — Debug visibility: funnel logging, timing, enhanced screenshots
+- [x] 02-PLAN.md — Debug visibility: funnel logging, timing, enhanced screenshots
 
 ---
 
@@ -73,7 +73,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Bug Fixes & Debug Infrastructure | 1/1 | Complete | 2026-03-25 |
-| 2. Debug Visibility | 0/1 | Not started | - |
+| 2. Debug Visibility | 1/1 | Complete | 2026-03-25 |
 | 3. Advanced Debug & Polish | 0/1 | Not started | - |
 
 ---
