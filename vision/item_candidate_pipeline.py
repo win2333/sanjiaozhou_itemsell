@@ -71,10 +71,14 @@ class ItemCandidatePipeline:
         eliminated: List[EliminatedCandidate] = []
 
         # 步骤 1: 坐标换算
-        converted = self._convert_coordinates(raw_detections, roi_origin_x, roi_origin_y)
+        converted = self._convert_coordinates(
+            raw_detections, roi_origin_x, roi_origin_y
+        )
 
         # 步骤 2: Icon filter
-        after_filter, filter_eliminated = self._apply_icon_filter(converted, roi_img, roi_origin_x, roi_origin_y)
+        after_filter, filter_eliminated = self._apply_icon_filter(
+            converted, roi_img, roi_origin_x, roi_origin_y
+        )
         eliminated.extend(filter_eliminated)
         filtered_count = len(filter_eliminated)
 
@@ -101,6 +105,7 @@ class ItemCandidatePipeline:
             raw_count=raw_count,
             filtered_count=filtered_count,
             dedup_count=dedup_count,
+            template_match_count=raw_count,  # In template mode, raw_detections are already template matches
             final_count=final_count,
             first_candidate=first_candidate,
         )
@@ -190,8 +195,11 @@ class ItemCandidatePipeline:
         return passed, eliminated
 
     def _has_no_sell_icon(
-        self, roi_img: np.ndarray, candidate: ItemCandidate,
-        roi_origin_x: int, roi_origin_y: int,
+        self,
+        roi_img: np.ndarray,
+        candidate: ItemCandidate,
+        roi_origin_x: int,
+        roi_origin_y: int,
     ) -> bool:
         """检测候选框附近是否有「不能卖」图标
 

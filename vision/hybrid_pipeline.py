@@ -64,6 +64,7 @@ class HybridPipeline:
         self.template = template_recognizer
         self.max_workers = max_workers
         self.dedup_distance_px = dedup_distance_px
+        self._template_match_count: int = 0
 
     def process(
         self,
@@ -98,6 +99,7 @@ class HybridPipeline:
                 raw_count=0,
                 filtered_count=0,
                 dedup_count=0,
+                template_match_count=0,
                 final_count=0,
                 first_candidate=None,
             )
@@ -147,6 +149,7 @@ class HybridPipeline:
             raw_count=len(yolo_detections),
             filtered_count=0,  # Hybrid模式暂不实现icon filter
             dedup_count=len(eliminated),
+            template_match_count=self._template_match_count,
             final_count=len(final_candidates),
             first_candidate=first_candidate,
         )
@@ -231,6 +234,7 @@ class HybridPipeline:
                 except Exception as e:
                     get_logger().warning(f"ROI[{idx}] 匹配失败: {e}")
 
+        self._template_match_count = len(results)
         return results
 
     def _match_single_roi(

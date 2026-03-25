@@ -261,9 +261,12 @@ class AutoSellLoop:
 
         # 1. 截图（背包区域）
         from config import BACKPACK_LEFT, BACKPACK_TOP, BACKPACK_WIDTH, BACKPACK_HEIGHT
+
+        capture_start = time.time()
         image = self.capture.capture_region(
             BACKPACK_LEFT, BACKPACK_TOP, BACKPACK_WIDTH, BACKPACK_HEIGHT
         )
+        capture_ms = (time.time() - capture_start) * 1000
         roi_img = image
         roi_origin_x = BACKPACK_LEFT
         roi_origin_y = BACKPACK_TOP
@@ -272,7 +275,9 @@ class AutoSellLoop:
         detector = self._get_detector()
         if ITEM_DETECTOR_MODE == "hybrid":
             # Hybrid模式：直接用HybridPipeline处理，返回(candidates, eliminated, summary)
-            candidates, eliminated, summary = detector.process(roi_img, roi_origin_x, roi_origin_y)
+            candidates, eliminated, summary = detector.process(
+                roi_img, roi_origin_x, roi_origin_y
+            )
             raw_detections = []  # HybridPipeline内部处理，无需传调试图
         else:
             # template模式：模板匹配 + pipeline整理
@@ -295,6 +300,18 @@ class AutoSellLoop:
             f"去重:{summary.dedup_count} 保留:{summary.final_count} | {status}",
         )
 
+        # DEBUG-01: Detection funnel log (D-01, D-02, D-03)
+        from config import DEBUG_MODE
+
+        if DEBUG_MODE:
+            template_count = getattr(summary, "template_match_count", 0)
+            funnel_str = f"YOLO:{summary.raw_count} → Template:{template_count} → IconFilter:{summary.filtered_count} → Dedup:{summary.dedup_count} → Final:{summary.final_count}"
+            logger.log_only("[识别]", funnel_str)
+
+            # DEBUG-02: Stage timing log (D-04, D-05, D-06)
+            timing_str = f"[耗时] capture={capture_ms:.0f}ms"
+            logger.log_only("[识别]", timing_str)
+
         # 5b. 显示待出售物品清单（控制台 + 文件）
         if self.state.menu_visible:
             return
@@ -303,7 +320,9 @@ class AutoSellLoop:
             for i, c in enumerate(candidates, 1):
                 lines.append(f"  [{i}] {c.template_name}")
             item_text = "\n".join(lines)
-            logger.log_only("[清单]", f"待出售: " + " | ".join(c.template_name for c in candidates))
+            logger.log_only(
+                "[清单]", f"待出售: " + " | ".join(c.template_name for c in candidates)
+            )
             print(item_text, flush=True)
         else:
             logger.log_only("[清单]", f"待出售: 无")
@@ -321,6 +340,7 @@ class AutoSellLoop:
             roi_origin_y=roi_origin_y,
             debug_dir=str(DEBUG_DIR),
             save=SAVE_DEBUG_IMAGES,
+            all_template_matches=candidates,  # Show ALL boxes with template names
         )
 
         if not candidates:
@@ -458,7 +478,6 @@ class AutoSellLoop:
             return False
         return True
 
-
     def _sell_item_with_log(self, record: ItemRecord, skipped_names: set) -> None:
         """卖出单个物品（分层重试机制）。
 
@@ -502,7 +521,9 @@ class AutoSellLoop:
                 time.sleep(random.uniform(0.2, 0.3))
                 return
             self.mouse.click(UPLOAD1_X, UPLOAD1_Y)
-            logger.step(f"[{item_name}] 点击 upload1 (固定坐标: {UPLOAD1_X}, {UPLOAD1_Y})")
+            logger.step(
+                f"[{item_name}] 点击 upload1 (固定坐标: {UPLOAD1_X}, {UPLOAD1_Y})"
+            )
         else:
             upload1_result = self._find_ui_element("upload1", x, y)
             if not upload1_result:
@@ -546,9 +567,7 @@ class AutoSellLoop:
         for i in range(3):
             self.mouse.click(quantity_x, quantity_y)
             time.sleep(random.uniform(0.05, 0.1))
-        logger.step(
-            f"[{item_name}] 点击数量按钮 3次 ({quantity_x}, {quantity_y})"
-        )
+        logger.step(f"[{item_name}] 点击数量按钮 3次 ({quantity_x}, {quantity_y})")
         time.sleep(random.uniform(0.1, 0.2))
 
         # ========== 步骤 7: 输入价格 ==========
@@ -560,16 +579,12 @@ class AutoSellLoop:
         self.keyboard.press("backspace")
         time.sleep(0.1)
         self.mouse.click(PRICE_DIRECT_CLICK_X, price_input_y)
-        logger.step(
-            f"[{item_name}] 输入价格: 退格后点击{PRICE_DIRECT_CLICK_X}坐标"
-        )
+        logger.step(f"[{item_name}] 输入价格: 退格后点击{PRICE_DIRECT_CLICK_X}坐标")
         time.sleep(random.uniform(0.1, 0.2))
 
         # ========== 步骤 8: 点击 upload2 确认 ==========
         self.mouse.click(upload2_x, upload2_y)
-        logger.step(
-            f"[{item_name}] 点击 upload2 确认 ({upload2_x}, {upload2_y})"
-        )
+        logger.step(f"[{item_name}] 点击 upload2 确认 ({upload2_x}, {upload2_y})")
 
         # 成功完成
         sell_time = time.time() - sell_start
@@ -625,7 +640,11 @@ class AutoSellLoop:
         pixels = []
         for dy in range(3):
             for dx in range(3):
-                b, g, r = int(region[dy, dx, 0]), int(region[dy, dx, 1]), int(region[dy, dx, 2])
+                b, g, r = (
+                    int(region[dy, dx, 0]),
+                    int(region[dy, dx, 1]),
+                    int(region[dy, dx, 2]),
+                )
                 pixels.append((r, g, b))
 
         # 检查 9 个格子相互之间是否一致（最大差异 <= 5）
@@ -646,10 +665,15 @@ class AutoSellLoop:
         avg_r = sum(p[0] for p in pixels) // 9
         avg_g = sum(p[1] for p in pixels) // 9
         avg_b = sum(p[2] for p in pixels) // 9
-        get_logger().log_only("[检测]", f"空白格子 ({x}, {y}) - RGB均值:({avg_r},{avg_g},{avg_b}), 范围:R[{min_r},{max_r}] G[{min_g},{max_g}] B[{min_b},{max_b}]")
+        get_logger().log_only(
+            "[检测]",
+            f"空白格子 ({x}, {y}) - RGB均值:({avg_r},{avg_g},{avg_b}), 范围:R[{min_r},{max_r}] G[{min_g},{max_g}] B[{min_b},{max_b}]",
+        )
         return True
 
-    def _capture_region_by_coords(self, x1: int, y1: int, x2: int, y2: int) -> Optional[np.ndarray]:
+    def _capture_region_by_coords(
+        self, x1: int, y1: int, x2: int, y2: int
+    ) -> Optional[np.ndarray]:
         """按绝对坐标截取区域"""
         width = x2 - x1
         height = y2 - y1
@@ -683,15 +707,15 @@ class AutoSellLoop:
         half_h = REGION_HALF_HEIGHT
 
         # 计算各方向到屏幕边缘的距离
-        left_space   = anchor_x
-        right_space  = w - anchor_x
-        top_space    = anchor_y
+        left_space = anchor_x
+        right_space = w - anchor_x
+        top_space = anchor_y
         bottom_space = h - anchor_y
 
         # 溢出量：超过屏幕边界的部分
-        overflow_left   = max(0, half_w - left_space)
-        overflow_right  = max(0, half_w - right_space)
-        overflow_top    = max(0, half_h - top_space)
+        overflow_left = max(0, half_w - left_space)
+        overflow_right = max(0, half_w - right_space)
+        overflow_top = max(0, half_h - top_space)
         overflow_bottom = max(0, half_h - bottom_space)
 
         # 实际裁剪区域：溢出叠加到对侧，保持总宽度不变
@@ -761,4 +785,3 @@ class AutoSellLoop:
         # 裁剪区域
         region = image[y1:y2, x1:x2]
         return region
-
