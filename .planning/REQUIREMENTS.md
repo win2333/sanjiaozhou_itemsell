@@ -4,10 +4,10 @@
 
 ### Detection Bug Fixes
 
-- [ ] **DET-01**: Fix CPU mode crash — undefined variables `w`/`h` → `tmpl_w`/`tmpl_h` in `recognizer.py` lines 411-417
-- [ ] **DET-02**: Consolidate all threshold constants to `config.py` as single source of truth (remove scattered thresholds from modules)
-- [ ] **DET-03**: Lower template match threshold from 0.98 to 0.95 as starting point (configurable)
-- [ ] **DET-04**: Lower color verification threshold from 0.99 to 0.95 in hybrid mode
+- [x] **DET-01**: Fix CPU mode crash — undefined variables `w`/`h` → `tmpl_w`/`tmpl_h` in `recognizer.py` lines 411-417
+- [x] **DET-02**: Consolidate all threshold constants to `config.py` as single source of truth (remove scattered thresholds from modules)
+- [x] **DET-03**: Lower template match threshold from 0.98 to 0.95 as starting point (configurable)
+- [x] **DET-04**: Lower color verification threshold from 0.99 to 0.95 in hybrid mode
 
 ### Debug Visibility
 
@@ -35,10 +35,10 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DET-01 | Phase 1 | Pending |
-| DET-02 | Phase 1 | Pending |
-| DET-03 | Phase 1 | Pending |
-| DET-04 | Phase 1 | Pending |
+| DET-01 | Phase 1 | ✓ Complete |
+| DET-02 | Phase 1 | ✓ Complete |
+| DET-03 | Phase 1 | ✓ Complete |
+| DET-04 | Phase 1 | ✓ Complete |
 | DEBUG-01 | Phase 2 | Pending |
 | DEBUG-02 | Phase 2 | Pending |
 | DEBUG-03 | Phase 2 | Pending |

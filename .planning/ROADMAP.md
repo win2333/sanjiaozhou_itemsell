@@ -26,7 +26,7 @@
 **Plans**: 1 plan
 
 Plans:
-- [ ] 01-PLAN.md — Fix CPU crash, consolidate thresholds
+- [x] 01-PLAN.md — Fix CPU crash, consolidate thresholds
 
 ---
 
@@ -69,7 +69,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Bug Fixes & Debug Infrastructure | 0/1 | Planned | - |
+| 1. Bug Fixes & Debug Infrastructure | 1/1 | Complete | 2026-03-25 |
 | 2. Debug Visibility | 0/1 | Not started | - |
 | 3. Advanced Debug & Polish | 0/1 | Not started | - |
 
