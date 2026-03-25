@@ -43,5 +43,6 @@ Phase 3 (Advanced Debug & Polish)
 
 ## Session Continuity
 
-- Last session: Research completed, requirements gathered
-- Next action: Plan Phase 1 with `/gsd-plan-phase 1`
+- Last session: Phase 1 context gathered
+- Next action: `/gsd-plan-phase 1`
+- Resume file: .planning/phases/01-bug-fixes-debug-infrastructure/01-CONTEXT.md
