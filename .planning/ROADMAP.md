@@ -44,7 +44,10 @@ Plans:
 3. Debug screenshots show ALL detection boxes with template name labels (not just candidates)
 4. User can identify which pipeline stage eliminated valid items by reading logs and screenshots
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 02-PLAN.md — Debug visibility: funnel logging, timing, enhanced screenshots
 
 ---
 
