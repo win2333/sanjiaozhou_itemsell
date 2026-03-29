@@ -15,7 +15,7 @@ UI_TEMPLATES_DIR = BASE_DIR / "templates" / "ui"  # UI元素模板目录
 DEBUG_DIR = BASE_DIR / "debug"
 
 # 模板匹配参数
-TEMPLATE_MATCH_THRESHOLD = 0.95  # 匹配阈值 (0-1)，从严调整以提升精度
+TEMPLATE_MATCH_THRESHOLD = 0.98  # 匹配阈值 (0-1)，从严调整以提升精度
 COLOR_MATCH_THRESHOLD = 0.95  # 颜色验证阈值 (0-1)，调整以过滤误匹配
 UI_TEMPLATE_THRESHOLD = 0.75  # UI元素匹配阈值，降低以提升鲁棒性
 DEDUP_DISTANCE = 30  # 去重距离（像素），小于此距离的框视为同一物品
