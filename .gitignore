@@ -32,3 +32,8 @@ nul
 # Git worktrees
 .worktrees/
 .gstack/
+
+# 敏感文件
+browser-use-test/
+.env
+*.env
