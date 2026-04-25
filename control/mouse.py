@@ -1,9 +1,59 @@
 """鼠标控制模块"""
 
 import pydirectinput
+pydirectinput.FAILSAFE = False  # 禁用角落安全保护，避免鼠标误移触发中断
 import time
 import random
+import logging
 from typing import Tuple, Optional
+
+logger = logging.getLogger(__name__)
+
+try:
+    import win32gui
+    import win32con
+    import win32api
+    HAS_WIN32 = True
+except ImportError:
+    HAS_WIN32 = False
+
+
+def focus_window(title: str, partial_match: bool = True) -> bool:
+    """激活指定标题的窗口
+
+    Args:
+        title: 窗口标题
+        partial_match: 是否部分匹配（默认 True）
+
+    Returns:
+        True 表示成功激活
+    """
+    if not HAS_WIN32:
+        return False
+
+    def enum_callback(hwnd, results):
+        if win32gui.IsWindowVisible(hwnd):
+            wt = win32gui.GetWindowText(hwnd)
+            if partial_match:
+                if title in wt:
+                    results.append(hwnd)
+            else:
+                if wt == title:
+                    results.append(hwnd)
+
+    results = []
+    win32gui.EnumWindows(enum_callback, results)
+
+    if results:
+        hwnd = results[0]
+        try:
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            win32gui.SetForegroundWindow(hwnd)
+            time.sleep(0.1)
+            return True
+        except Exception as e:
+            logger.warning(f"激活窗口失败: {e}")
+    return False
 
 
 class MouseController:
@@ -47,28 +97,6 @@ class MouseController:
 
         pydirectinput.click(button=button)
         self._random_delay()
-
-    def double_click(self, x: Optional[int] = None, y: Optional[int] = None) -> None:
-        """双击
-
-        Args:
-            x: x 坐标（可选）
-            y: y 坐标（可选）
-        """
-        if x is not None and y is not None:
-            self.move_to(x, y)
-
-        pydirectinput.doubleClick()
-        self._random_delay()
-
-    def right_click(self, x: Optional[int] = None, y: Optional[int] = None) -> None:
-        """右键点击
-
-        Args:
-            x: x 坐标（可选）
-            y: y 坐标（可选）
-        """
-        self.click(x, y, button="right")
 
     def drag(self, x1: int, y1: int, x2: int, y2: int) -> None:
         """拖拽

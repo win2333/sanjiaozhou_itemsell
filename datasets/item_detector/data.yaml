@@ -1,9 +1,0 @@
-# YOLO 单类物品检测数据集（合成数据）
-# 由 tools/generate_yolo_dataset.py 自动生成
-path: C:\Users\Eureka\Desktop\python_tools\sanjiaozhouGame\datasets\item_detector
-train: images/train
-val: images/val
-
-nc: 1
-names:
-  0: item

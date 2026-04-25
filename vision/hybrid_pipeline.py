@@ -152,6 +152,7 @@ class HybridPipeline:
             template_match_count=self._template_match_count,
             final_count=len(final_candidates),
             first_candidate=first_candidate,
+            raw_yolo_detections=yolo_detections,
         )
 
         return final_candidates, eliminated, summary
@@ -268,6 +269,10 @@ class HybridPipeline:
 
         best_match = None
         best_confidence = 0.0
+        # 记录颜色验证失败的最佳候选（用于调试）
+        best_color_fail_name = ""
+        best_color_fail_conf = 0.0
+        best_color_fail_sim = 0.0
 
         # 直接在ROI上做模板匹配，跳过TemplateRecognizer的x>=1150裁剪逻辑
         # 只用匹配阈值过滤
@@ -311,6 +316,10 @@ class HybridPipeline:
                     if all_valid and len(similarities) == 9:
                         avg_sim = sum(similarities) / len(similarities)
                         if avg_sim < COLOR_MATCH_THRESHOLD:
+                            if max_val > best_color_fail_conf:
+                                best_color_fail_name = template_name
+                                best_color_fail_conf = max_val
+                                best_color_fail_sim = avg_sim
                             continue  # 颜色不匹配，跳过
                     best_confidence = max_val
                     best_match = {
@@ -325,6 +334,17 @@ class HybridPipeline:
                 continue
 
         if best_match is None:
+            if total > 0:
+                reason = f"最高 {best_confidence:.2f}, 阈值 {TEMPLATE_MATCH_THRESHOLD}"
+                if best_color_fail_conf > 0:
+                    reason += (
+                        f" | 颜色验证失败: {best_color_fail_name}"
+                        f" ({best_color_fail_conf:.2f}, 相似度 {best_color_fail_sim:.2f})"
+                    )
+                get_logger().log_only(
+                    "[识别]",
+                    f"ROI[{index}/{total}] ({detection.w}x{detection.h}) 无匹配 ({reason})",
+                )
             return None
 
         # 构建ItemCandidate，使用屏幕绝对坐标

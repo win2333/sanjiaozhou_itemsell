@@ -1,348 +1,147 @@
-# 项目 CLAUDE.md
+# CLAUDE.md
 
-## 语言设置
-默认回复简体中文（Simplified Chinese）
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## /workflow3 - 三阶段工作流
-您正在处理当前项目。遵循用户的三阶段工作流规则，从【分析问题】阶段开始。
+## 项目概述
 
-### 【分析问题】
-**必须做的事**：
-1. **需求澄清**（如果用户提出了需求）：
-   - 理解表层需求：用户说要什么
-   - 追问本质："为什么需要？""想解决什么问题？""有没有其他方式？"
-   - 收集信息：Who/When/Where/How
-   - 识别边界：例外情况、异常流程、限制条件
-   - 输出结构化需求文档
-2. **代码分析**：
-   - 理解用户意图，有歧义时提问
-   - 搜索所有相关代码
-   - 识别问题根因
-   - 主动发现：重复代码、不合理命名、多余代码、过时设计、复杂调用、不一致类型
+**三角洲行动装备自动出售工具** — 通过屏幕视觉识别（YOLO 粗识别 + 模板匹配精识别 + OCR 价格读取）在游戏背包中自动检测并出售物品。
 
-**绝对禁止**：
-- ❌ 修改任何代码
-- ❌ 急于给出解决方案
-- ❌ 跳过搜索和理解
-- ❌ 不分析就推荐方案
-
-**阶段转换**：向用户提问，如果存在多个无法抉择的方案要问用户。
-
-### 【制定方案】
-**前置条件**：用户明确回答了关键技术决策。
-
-**必须做的事**：
-- 列出变更文件清单（新增、修改、删除）
-- 消除重复逻辑（DRY原则）
-- 确保符合良好架构设计
-
-**阶段转换**：继续向用户收集关键决策，直到没有不明确的问题。
-
-### 【执行方案】
-**必须做的事**：
-- 严格按照选定方案实现
-- 修改后运行类型检查
-
-**绝对禁止**：
-- ❌ 提交代码（除非用户明确要求）
-- ❌ 启动开发服务器
-
-**阶段声明**：用【分析问题】【制定方案】【执行方案】标记当前阶段。
-
-使用示例: `/workflow3`
-
----
-
-## 项目结构
-
-```
-sanjiaozhouGame/
-+-- main.py                    # 主入口程序
-+-- config.py                  # 全局配置
-+-- core/                      # 核心模块
-|   +-- loop.py               # 主循环
-|   +-- hotkey.py             # 热键管理
-|   +-- menu.py               # 菜单系统
-+-- vision/                    # 视觉识别
-|   +-- capture.py            # 屏幕截图
-|   +-- recognizer.py         # 模板识别
-|   +-- price_reader.py       # 价格识别(OCR)
-+-- control/                   # 输入控制
-|   +-- mouse.py              # 鼠标控制
-|   +-- keyboard.py           # 键盘控制
-+-- utils/                     # 工具模块
-|   +-- logger.py             # 日志系统
-+-- templates/                 # 模板图片目录
-|   +-- ui/                   # UI元素模板
-|   +-- [322个物品模板]       # 物品截图
-+-- debug/                     # debug输出图片
-+-- logs/                      # 日志文件
-+-- py_test/                   # 测试工具
-|   +-- test_screenshot.py    # 截图测试
-|   +-- test_recognize.py     # 识别测试
-|   +-- debug_markers.py      # UI坐标标记
-|   +-- debug_coords.py       # 坐标调试
-|   +-- crop_templates.py     # 模板裁剪
-|   +-- find_coords.py        # 坐标查找
-|   +-- nul                   # 空文件
-```
-
-<!-- GSD:project-start source:PROJECT.md -->
-## Project
-
-**游戏装备自动出售工具**
-
-游戏装备自动出售工具，通过屏幕视觉识别（模板匹配 + OCR）自动在游戏背包中检测并出售物品。运行在Windows平台，使用热键（F8）控制开始/暂停。当前代码已完成基础功能，但存在检测不稳定和debug可观测性不足的问题。
-
-**Core Value:** **可靠的物品检测** — 每次扫描都能准确识别所有可售物品，不漏识别；同时具备完整的检测过程可观测性，debug模式能看到详细的中间结果。
-
-### Constraints
-
-- **性能模式**：CPU-only — 不使用 GPU 加速
-- **平台**：Windows — 游戏自动化依赖 pydirectinput/win32
-- **游戏分辨率**：固定坐标（BACKPACK_LEFT/TOP/WIDTH/HEIGHT）— 假设游戏窗口位置固定
-- **Python版本**：Python 3.x — 依赖 pydirectinput、mss、cv2 等
-<!-- GSD:project-end -->
-
-<!-- GSD:stack-start source:codebase/STACK.md -->
-## Technology Stack
-
-## Languages
-- Python 3.12+ - Main game automation scripting
-- None significant
-## Runtime
-- Windows (Desktop game automation)
-- Python 3.12+ (based on `browser-use-test/pyproject.toml` requires-python >=3.12)
-- pip (requirements.txt)
-- uv (for browser-use-test sub-project)
-## Frameworks
-- Custom game automation framework
-- Template matching (OpenCV-based)
-- YOLO object detection (optional, via ultralytics)
-- OpenCV 4.8.0+ - Image processing, template matching
-- PyTorch (optional) - GPU acceleration for template matching
-- Ultralytics YOLO (optional) - Deep learning object detection
-- pydirectinput - Mouse/keyboard control (primary)
-- pyautogui - Input control (fallback)
-- keyboard - Global hotkey handling
-- pywin32 - Windows API access
-- EasyOCR 1.7.0+ - Local OCR for price recognition (GPU-accelerated)
-- mss 9.0.1+ - Fast cross-platform screen capture
-## Key Dependencies
-- `opencv-python>=4.8.0` - Template matching, image processing
-- `numpy>=1.24.0` - Numerical operations for image arrays
-- `mss>=9.0.1` - Screen capture
-- `pydirectinput>=1.0.4` - Mouse/keyboard simulation
-- `keyboard>=0.13.5` - Hotkey registration and listening
-- `torch` - GPU acceleration (auto-detected if CUDA available)
-- `ultralytics` - YOLO item detection model
-- `easyocr>=1.7.0` - OCR for price reading
-- `Pillow>=10.0.0` - Image format conversion, Chinese font rendering
-- `pyperclip>=1.8.0` - Clipboard operations for price input
-- `pywin32>=306` - Windows API bindings
-- `browser-use>=0.12.2` - AI-powered browser automation (browser-use-test/)
-## Configuration
-- `config.py` - Main configuration file
-- Hardcoded game window coordinates (pixel-based)
-- Environment-specific paths for templates
-- `requirements.txt` - Main project dependencies
-- `browser-use-test/pyproject.toml` - Browser automation sub-project
-## Platform Requirements
-- Windows OS (game automation for desktop game)
+- 平台：Windows；分辨率：1920×1080（坐标硬编码）
 - Python 3.12+
-- Screen resolution awareness (coordinates hardcoded for 1920x1080)
-- Windows with game client running
-- 1920x1080 or compatible resolution
-- Game window must be visible at configured coordinates
-<!-- GSD:stack-end -->
+- GSD 工作流：`/gsd:quick` `/gsd:debug` `/gsd:execute-phase`
 
-<!-- GSD:conventions-start source:CONVENTIONS.md -->
-## Conventions
+## 常用命令
 
-## Naming Patterns
-- Python modules: `snake_case.py` (e.g., `item_candidate_pipeline.py`, `price_reader.py`)
-- Test files: `test_*.py` prefix (e.g., `test_recognize.py`, `test_loop_integration.py`)
-- Debug/util scripts: `debug_*.py`, `crop_*.py`, `find_*.py`
-- `snake_case` for functions and methods
-- Prefix with underscore for "private" internal methods: `_run_one_cycle_new()`, `_verify_candidate()`
-- Action verbs for methods: `capture_region()`, `recognize()`, `move_to()`, `click()`
-- `snake_case` for local variables: `raw_detections`, `click_x`, `price_offset_x`
-- CamelCase for dataclass names: `MatchResult`, `ItemCandidate`, `SellState`, `RawItemDetection`
-- ALL_CAPS for constants: `TEMPLATE_MATCH_THRESHOLD`, `USE_GPU_TEMPLATE_RECOGNITION`, `DEDUP_DISTANCE`
-- PascalCase for class names: `TemplateRecognizer`, `ScreenCapture`, `MouseController`, `AutoSellLoop`
-- PascalCase for dataclasses: `ItemRecord`, `RoundSummary`, `EliminatedCandidate`
-- snake_case for module-level type aliases
-## Code Style
-- No explicit formatter configured (no `black`, `ruff`, `prettierrc`)
-- 4-space indentation
-- Maximum line length not enforced
-- Standard library first, then third-party, then local
-- `sys.path.insert(0, '.')` pattern used in test files to enable imports
-- Absolute imports from package: `from vision.capture import ScreenCapture`
-- Used in function signatures: `def recognize(self, image: np.ndarray, draw_debug: bool = False) -> List[MatchResult]:`
-- `Optional[]` for nullable parameters: `price_reader: Optional[PriceReader] = None`
-- `from typing import List, Tuple, Optional, Set, Dict` used throughout
-## Error Handling
-## Logging
-- `DEBUG_MODE = True`: All logs output to console + file
-- `DEBUG_MODE = False`: Logs write to file only, console shows minimal info
-- `[操作]` - Mouse/keyboard operations
-- `[识别]` - Vision recognition
-- `[验证]` - Candidate verification
-- `[统计]` - Statistics
-- `[初始化]` - Initialization messages
-- `[扫描]` - YOLO/scanning phase
-- `[步骤]` - Detailed step logging
-- `[控制台]` - Console-only output
-## Recognition Patterns
-- Uses OpenCV `cv2.matchTemplate()` with `TM_CCOEFF_NORMED`
-- Two backends: GPU (PyTorch CUDA) and CPU (ThreadPoolExecutor)
-- Color verification after template match (cosine similarity of average BGR colors)
-- Deduplication by distance: keeps highest confidence within `DEDUP_DISTANCE` pixels
-- Groups templates by (height, width)
-- Precomputes normalized templates: `(T - mean_T) / std_T`
-- Uses `conv2d` for batch template matching
-- Implements TM_CCOEFF_NORMED manually for GPU efficiency
-- ThreadPoolExecutor with 16 workers
-- Each template matched independently
-- Color verification after template match
-## Control Patterns
-- Uses `pydirectinput` for mouse operations
-- Random delays between actions: `random.uniform(min_delay, max_delay)`
-- Methods: `move_to(x, y)`, `click(x, y)`, `double_click()`, `right_click()`, `drag()`
-- Uses `pydirectinput` for key operations
-- `combo(keys)` for key combinations with proper key-down/key-up ordering
-- `type_text()` filters non-digit characters for price input
-- Optional clipboard support via `pyperclip`
-- Uses `mss` for cross-platform screen capture
-- Thread-local mss instances for thread safety
-- Methods: `capture_region()`, `capture_full_screen()`, `capture_center_region()`
-## Data Flow
-- `SellState` dataclass tracks: `processed_positions`, `total_sold`, `is_running`, `consecutive_empty`, `idle_delay`
-- `ItemRecord` for verification: stores name, coordinates, snapshot
-## Key Abstractions
-- Loads templates from directory (supports Chinese filenames via binary read + decode)
-- `recognize()` returns `List[MatchResult]` with coordinates and confidence
-- `recognize_as_raw_detections()` returns `List[RawItemDetection]` for pipeline
-- Stateless processor: `process(raw_detections, roi_origin_x, roi_origin_y, roi_img)`
-- Returns tuple: `(candidates, eliminated, summary)`
-- `MatchResult`: Template recognition output (coordinates in matched region)
-- `RawItemDetection`: Pipeline input (ROI local coords, source="template"|"yolo")
-- `ItemCandidate`: Pipeline output (screen coords, ranked, filtered)
-## Comments
-- Complex algorithms: "对称减法算法 - 计算最优价格" (price calculation)
-- Non-obvious behavior: "9 个格子颜色是否一致（相互间容差小）"
-- Debug code explanation: "拍当前画面与 snapshot 做 MSE 对比"
-- Args/Returns format used in public methods
-- Chinese comments for Chinese developers (project uses Chinese documentation)
-## Module Design
-- No explicit `__all__` defined
-- Classes imported directly: `from vision.capture import ScreenCapture`
-<!-- GSD:conventions-end -->
+```bash
+# 运行主程序
+python main.py
 
-<!-- GSD:architecture-start source:ARCHITECTURE.md -->
-## Architecture
+# 类型检查
+python -m mypy main.py config.py core/ vision/ control/ utils/
 
-## Pattern Overview
-- Game automation for FPS inventory selling
-- Three-tier detection: YOLO (fast) → Template (precise) → Pipeline (filter/dedup)
-- Hotkey-controlled state machine (idle → running ↔ menu)
-- Threaded architecture for non-blocking UI responsiveness
-- Lazy initialization for heavy components (YOLO)
-## Layers
-- Purpose: Application bootstrap and state orchestration
-- Location: `main.py`
-- Contains: Global component initialization, hotkey registration, main state machine
-- Depends on: All modules
-- Used by: OS runtime (`python main.py`)
-- Purpose: Centralized constants and coordinate definitions
-- Location: `config.py`
-- Contains: Thresholds, screen coordinates, timing parameters, feature flags
-- Depends on: None
-- Used by: All modules
-- Purpose: Main automation logic - detect items, verify, sell
-- Location: `core/loop.py` (764 lines)
-- Contains: `AutoSellLoop` class with `_run_one_cycle_new()` and `_sell_item_with_log()`
-- Depends on: vision, control, config, utils.logger
-- Used by: `main.py`
-- Purpose: Screen capture, template matching, item detection, price OCR
-- Location: `vision/capture.py`, `vision/recognizer.py`, `vision/price_reader.py`
-- Contains:
-- Depends on: mss, cv2, numpy, torch (optional), easyocr (optional)
-- Used by: `core/loop.py`
-- Purpose: Input simulation (mouse/keyboard)
-- Location: `control/mouse.py`, `control/keyboard.py`
-- Contains:
-- Depends on: pydirectinput, pyperclip (optional)
-- Used by: `core/loop.py`
-- Purpose: Hotkey management and menu display
-- Location: `core/hotkey.py`, `core/menu.py`
-- Contains:
-- Depends on: keyboard (library)
-- Used by: `main.py`
-- Purpose: Dual-output logging (file always, console conditional)
-- Location: `utils/logger.py`
-- Contains: `Logger` class with buffered file writes
-- Depends on: config (DEBUG_MODE)
-- Used by: All modules via `get_logger()`
-## Data Flow
+# 测试工具
+python py_test/step_by_step_debug.py      # 逐步调试：截图→YOLO→ROI→模板匹配（推荐）
+python py_test/debug_detection_steps.py   # 检测流水线分步调试
+python py_test/test_price_method.py       # 价格算法测试
+python py_test/debug_coords.py            # 坐标偏移校准
+python py_test/find_coords.py             # 鼠标坐标查找
+python -m pytest py_test/test_item_candidate_pipeline.py  # Pipeline 单元测试（需 pytest）
+python -m pytest py_test/test_loop_integration.py   # 主循环集成测试（需 pytest）
+python py_test/test_recognizer_backend.py # GPU/CPU 后端对比测试
 ```
+
+## 架构
+
 ```
-## Key Abstractions
-- Purpose: Multi-template matching with GPU acceleration
-- Examples: `vision/recognizer.py` (618 lines)
-- Pattern: Lazy-load templates on init, GPU path (PyTorch conv2d) vs CPU path (ThreadPoolExecutor + cv2.matchTemplate)
-- Interface: `recognize()`, `recognize_as_raw_detections()`, `load_templates()`
-- Purpose: Filter/dedup/sort detected items
-- Examples: `vision/item_candidate_pipeline.py` (238 lines)
-- Pattern: Fixed 5-stage pipeline (convert → icon_filter → dedup → sort → rank)
-- Purpose: YOLO rough detection + template precise recognition
-- Examples: `vision/hybrid_pipeline.py` (372 lines)
-- Pattern: YOLO → ROI extraction → parallel template match → merge results
-- Interface: `process(full_screen, roi_origin_x, roi_origin_y)`
-- Purpose: Per-session state tracking
-- Examples: `core/loop.py` lines 76-92
-- Contains: processed_positions, total_sold, is_running, consecutive_empty, idle_delay, menu_visible
-- Purpose: Type-safe data containers for pipeline stages
-- Examples: `vision/item_types.py`
-## Entry Points
-- Location: `main.py`
-- Triggers: `python main.py` from command line
-- Responsibilities:
-- Location: `config.py`
-- Triggers: Imported by all modules
-- Responsibilities:
-## Error Handling
-- GPU unavailable → fallback to CPU template matching (`TemplateRecognizer.__init__`)
-- OCR initialization fails → `PriceReader` returns empty results
-- Template match fails → ESC to dismiss dialog, skip item
-- Green button check fails → skip item without selling
-- Empty slot detected → skip without selling
-- Icon filter failure → continues with all candidates
-## Cross-Cutting Concerns
-- `USE_FIXED_COORDINATES=True` skips UI template matching
-- `USE_CLIPBOARD_INPUT=True` for faster price entry
-- `USE_GPU_TEMPLATE_RECOGNITION=False` (CPU mode)
-- Thread-local mss instances for screen capture (`ScreenCapture._init_thread_local()`)
-- Idle escalation delays through `IDLE_DELAYS` list
-<!-- GSD:architecture-end -->
+main.py — F8热键 → loop.start()
+    │
+    ├── AutoSellLoop — 主循环（core/loop.py）
+    │       │
+    │       ├── ScreenCapture (mss 截图, 线程安全)
+    │       ├── HybridPipeline — YOLO粗筛 → ROI提取 → 模板精识别 → 合并去重
+    │       │       ├── YoloItemDetector (需 models/item_detector.pt)
+    │       │       ├── TemplateRecognizer (GPU PyTorch conv2d / CPU ThreadPoolExecutor)
+    │       │       └── ItemCandidatePipeline (坐标换算 → icon filter → 去重 → 排序)
+    │       ├── PriceReader (EasyOCR 读价格柱 P1/P2)
+    │       ├── MouseController (pydirectinput 点击/移动)
+    │       └── KeyboardController (退格键)
+    └── keyboard.add_hotkey("f8") — 全局热键（仅设标志位，主线程处理）
+```
 
-<!-- GSD:workflow-start source:GSD defaults -->
-## GSD Workflow Enforcement
+**关键数据流（每轮循环）：**
+1. `ScreenCapture.capture_region()` 截图背包区域（1200,100 → 1850,1000）
+2. HybridPipeline: YOLO 检测 → ROI 裁剪（+10px padding）→ 多线程模板匹配 → 去重排序
+3. `_sell_item_with_log()` 4步卖出流程（点击物品 → 设置数量×3 → 设置价格(退格+坐标点击) → 上架确认）
+4. `RoundSummary` 本轮统计摘要（回填 verification_passed/action_taken）
 
-Before using Edit, Write, or other file-changing tools, start work through a GSD command so planning artifacts and execution context stay in sync.
+**三段数据类型：**
+- `RawItemDetection` — 第一段输出，检测器的原始结果（ROI 局部坐标 + 置信度 + 来源）
+- `ItemCandidate` — 第二段输出，pipeline 整理后（全屏坐标 + 排序 + 去重 + icon filter 结果，含模板名）
+- `RoundSummary` — 每轮统计摘要（各阶段数量 + 第一名 + 第三段回填的验证/操作状态 + raw_yolo_detections）
 
-Use these entry points:
-- `/gsd:quick` for small fixes, doc updates, and ad-hoc tasks
-- `/gsd:debug` for investigation and bug fixing
-- `/gsd:execute-phase` for planned phase work
+**4步卖出流程：** 点击物品 → 设置数量×3 → 设置价格(退格+坐标点击) → 点击上架确认
 
-Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
-<!-- GSD:workflow-end -->
+## 核心目录/文件
 
-<!-- GSD:profile-start -->
-## Developer Profile
+| 文件 | 职责 |
+|------|------|
+| `config.py` | 所有阈值/坐标/模式开关，单一真相来源 |
+| `vision/hybrid_pipeline.py` | YOLO + 模板混合识别主逻辑（_ROI_PADDING=10） |
+| `vision/item_candidate_pipeline.py` | 候选过滤/去重/排序流水线 |
+| `vision/candidate_utils.py` | 去重/排序共享工具函数 |
+| `vision/recognizer.py` | 模板匹配引擎（GPU PyTorch conv2d / CPU ThreadPoolExecutor，支持中文文件名） |
+| `vision/item_types.py` | 所有 dataclass 类型定义 |
+| `vision/capture.py` | mss 截图封装（线程安全，每线程独立 mss 实例） |
+| `vision/price_reader.py` | EasyOCR 价格柱识别，延迟初始化单例 |
+| `vision/yolo_item_detector.py` | YOLO 推理封装（需 models/item_detector.pt） |
+| `core/loop.py` | AutoSellLoop — 主循环 + 卖出流程 + MSE 验证 + 控制台置顶 |
+| `control/mouse.py` | pydirectinput 鼠标控制 + focus_window() 游戏窗口激活 |
+| `control/keyboard.py` | 键盘控制（pydirectinput press） |
+| `utils/logger.py` | 双通道日志（文件始终写入，控制台仅 DEBUG_MODE 时输出） |
+| `utils/debug_visualizer.py` | 调试标注图生成（3张/轮：原图 → YOLO框 → 候选+淘汰+物品名） |
+| `utils/status_panel.py` | 实时状态面板（无边框分组布局，_row() 格式） |
 
-> Profile not yet configured. Run `/gsd:profile-user` to generate your developer profile.
-> This section is managed by `generate-claude-profile` -- do not edit manually.
-<!-- GSD:profile-end -->
+## HybridPipeline（唯一检测模式）
+
+检测流程固定为 **YOLO 粗筛 → ROI 裁剪(+10px padding) → 模板精识别 → 去重排序**。
+不再支持纯 `template` 或纯 `yolo` 模式。
+
+空闲延迟阶梯：连续 N 次未识别到物品时递增延迟，`LOOP_DELAY → 0.5 → 1.0 → 3.0 → 5.0 → 10.0 → 15.0` 秒（最后一级常驻）。
+
+## 关键配置参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `TEMPLATE_MATCH_THRESHOLD` | **0.70** | 模板匹配阈值（调低以适应 YOLO 裁剪后的 ROI 小图） |
+| `COLOR_MATCH_THRESHOLD` | **0.85** | 九宫格颜色验证阈值 |
+| `DEDUP_DISTANCE_PX` | 20 | 空间去重距离（像素） |
+| `USE_FIXED_COORDINATES` | `True` | 跳过 UI 识别，用预校准坐标 |
+| `USE_GPU_TEMPLATE_RECOGNITION` | `False` | GPU 加速（需 NVIDIA CUDA + torch） |
+| `DEBUG_MODE` | `False` | `True`=详细日志到控制台+文件；`False`=仅写文件，控制台只显示摘要 |
+| `SAVE_DEBUG_IMAGES` | `False` | debug 图片输出开关（生成到 debug/round_NNNN/） |
+| `LOOP_DELAY` | 0.1 | 主循环间隔秒数 |
+| `HYBRID_MAX_WORKERS` | 8 | Hybrid 模式模板匹配线程数 |
+
+## 命名约定
+
+- 模块/函数/变量：`snake_case`
+- 类：`PascalCase`
+- 常量：`ALL_CAPS`
+- 私有方法：前导 `_` 下划线
+- dataclass：`PascalCase`（如 `ItemCandidate`、`RoundSummary`）
+
+## 注意事项
+
+### HybridPipeline 模板匹配要点
+- YOLO 检测框 ~59x60px，ROI 加 10px padding（`_ROI_PADDING`）后约 **79x81px**
+- 模板匹配跑在**裁剪后的 ROI 小图**上，不是全图。`_match_single_roi()` 对每个 ROI 独立遍历所有模板
+- 模板尺寸大于 ROI 会被**跳过**（`if tmpl_h > roi_h or tmpl_w > roi_w: continue`）。955 个模板中约 634 个大于 79x81px
+- 阈值 0.70 + 0.85 九宫格颜色验证已通过实测验证
+- 中文文件名加载需用 `cv2.imdecode(np.frombuffer(open(path, "rb").read(), ...))`，不能用 `cv2.imread`（不识别中文路径）
+- 逐步调试脚本 `py_test/step_by_step_debug.py` 可逐段查看 YOLO→ROI→模板匹配过程，每个 ROI 显示 TOP-5 最佳匹配及分数
+
+### F8 优雅停止机制
+- F8 回调运行在 keyboard 库的 hook 线程中，**只设标志位**（`stop_requested=True`），不调 `loop.stop()`
+- 主线程在 `_run_one_cycle_new()` 入口检测 `stop_requested`，自然退出
+- Logger 只在 `main.py` 的 `finally` 中关闭，避免 hook 线程提前关 logger 导致日志分裂
+
+### 控制台窗口置顶
+- `main.py` 启动时调用 `SetWindowPos(HWND_TOPMOST)` 置顶控制台
+- `_sell_item_with_log()` 每次卖出前调用 `focus_window("三角洲行动")` 激活游戏（保证点击有效）
+- `run()` 每轮循环末尾调用 `_keep_console_topmost()` 恢复控制台置顶
+
+### 其他
+- 模板文件支持中文文件名，放在 `templates/` 目录（963 个物品模板）
+- `config.py` 的 `__init__` 会打印阈值配置到 stderr
+- `vision/recognizer.py` 启动时加载所有模板到内存，按 (h, w) 分组加速匹配
+- `_verify_candidate` MSE 验证，高于 MSE 阈值视为物品已变化
+- `_is_empty_slot` 通过 3x3 共 9 像素判断格子 RGB(26,31,34) 是否一致，用于跳过空白格
+- `_has_green_button` HSV 空间检测绿色比例 > 5%，用于验证上架按钮是否出现
+- `save_debug_frame` 每轮可生成 3 张标注截图（00_original / 01_yolo / 02_pipeline），按 round_NNNN/ 分目录
+- `RoundSummary.raw_yolo_detections` 存储 YOLO 原始检测框列表，供调试绘图使用
+
+## 当前 Roadmap
+
+- Phase 1 ✓：Bug Fixes — 修复 CPU 崩溃，阈值统一到 config
+- Phase 2 ✓：Debug Visibility — 检测漏斗日志、阶段耗时、标注截图、YOLO原始框
+- Phase 3 ○：Advanced Debug — 置信度直方图、静默失败检测器（未开始）

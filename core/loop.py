@@ -4,35 +4,26 @@ import time
 import random
 import cv2
 import numpy as np
-from typing import List, Optional, Set, Dict, Tuple
+from typing import List, Optional, Tuple
 from dataclasses import dataclass
 
 from vision.capture import ScreenCapture
 from vision.recognizer import TemplateRecognizer, MatchResult
 from vision.price_reader import PriceReader
-from control.mouse import MouseController
+from control.mouse import MouseController, focus_window
 from control.keyboard import KeyboardController
 from utils.logger import get_logger
 from config import (
     TEMPLATE_MATCH_THRESHOLD,
-    UI_TEMPLATE_THRESHOLD,
-    DEDUP_DISTANCE,
     LOOP_DELAY,
     IDLE_DELAYS,
-    calculate_price,
     PRICE_OFFSET_X,
     PRICE_OFFSET_Y,
     QUANTITY_OFFSET_X,
     QUANTITY_OFFSET_Y,
-    USE_FIXED_COORDINATES,
-    USE_CLIPBOARD_INPUT,
-    USE_NEW_PRICE_METHOD,
     PRICE_DIRECT_CLICK_X,
-    UPLOAD1_X,
-    UPLOAD1_Y,
     UPLOAD2_X,
     UPLOAD2_Y,
-    ITEM_DETECTOR_MODE,
     YOLO_MODEL_PATH,
     YOLO_CONFIDENCE_THRESHOLD,
     YOLO_IOU_THRESHOLD,
@@ -46,37 +37,13 @@ from config import (
 from vision.item_types import ItemCandidate, RoundSummary
 from vision.item_candidate_pipeline import ItemCandidatePipeline
 from utils.debug_visualizer import save_debug_frame
-
-# 验证参数
-VERIFY_MARGIN = 10  # 验证区域边距（像素）
-VERIFY_MSE_THRESHOLD = 500  # MSE 阈值（基本相同的判断标准）
-
-
-def compare_images_mse(img1: np.ndarray, img2: np.ndarray) -> float:
-    """计算两张图片的 MSE（均方误差）
-
-    Args:
-        img1: 图片1
-        img2: 图片2
-
-    Returns:
-        MSE 值，越小说明越相似
-    """
-    if img1.shape != img2.shape:
-        # 调整大小到较小的那一个
-        h = min(img1.shape[0], img2.shape[0])
-        w = min(img1.shape[1], img2.shape[1])
-        img1 = cv2.resize(img1, (w, h))
-        img2 = cv2.resize(img2, (w, h))
-
-    return np.mean((img1.astype(float) - img2.astype(float)) ** 2)
+from utils.status_panel import Status, render as render_panel
 
 
 @dataclass
 class SellState:
     """卖出状态"""
 
-    processed_positions: Set[tuple]  # 已处理的位置集合
     total_sold: int  # 总共卖出的数量
     is_running: bool  # 是否正在运行
     consecutive_empty: int  # 连续未识别次数（用于空闲检测）
@@ -84,7 +51,6 @@ class SellState:
     menu_visible: bool = False  # 菜单是否正在显示（显示时停止控制台输出）
 
     def __init__(self):
-        self.processed_positions = set()
         self.total_sold = 0
         self.is_running = False
         self.consecutive_empty = 0
@@ -93,7 +59,7 @@ class SellState:
 
 @dataclass
 class ItemRecord:
-    """物品记录（用于验证）"""
+    """物品记录"""
 
     name: str  # 物品名称
     x: int  # 中心 x 坐标
@@ -101,7 +67,28 @@ class ItemRecord:
     width: int  # 模板宽度
     height: int  # 模板高度
     confidence: float  # 识别置信度
-    snapshot: Optional[np.ndarray]  # 区域截图
+
+
+def _group_by_type(candidates: List[ItemCandidate]) -> List[List[ItemCandidate]]:
+    """按 template_name 分组，组间按最左上角物品排序。
+
+    Args:
+        candidates: 已排序的候选列表（y 升序, x 升序）
+
+    Returns:
+        分组列表，每组内保持原排序
+    """
+    groups: dict = {}
+    for c in candidates:
+        key = c.template_name or "unknown"
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(c)
+
+    result = list(groups.values())
+
+    result.sort(key=lambda g: (g[0].screen_y, g[0].screen_x))
+    return result
 
 
 class AutoSellLoop:
@@ -135,7 +122,6 @@ class AutoSellLoop:
         self.state = SellState()
         self.start_time: Optional[float] = None  # 运行开始时间
 
-        # 新架构：候选 pipeline 和轮次计数器
         # 加载 icon 模板（不能卖图标）
         icon_templates: List[np.ndarray] = []
         icon_path = ICON_TEMPLATE_PATH
@@ -159,6 +145,8 @@ class AutoSellLoop:
         )
         self._round_counter: int = 0
         self._detector = None  # 延迟初始化（YOLO 模型加载较慢）
+        self._backpack_ref = None  # 背包参考截图，用于验证UI是否仍在
+        self.status = Status()  # 状态面板
 
     def start(self) -> str:
         """开始自动卖出
@@ -177,14 +165,33 @@ class AutoSellLoop:
         self.state = SellState()
         self.state.is_running = True
         self.start_time = time.time()
-        print("自动卖出已启动！", flush=True)
+        self.status.status = "运行中"
+        self.status.round_num = 0
+        self.status.current_item = ""
+        self.status.current_step = ""
+        self.status.yolo_count = 0
+        self.status.template_count = 0
+        self.status.type_groups = 0
+        self.status.detect_time_ms = 0
+        self.status.item_preview = []
+        self.status.total_types = 0
+        self.status.current_group = 0
+        self.status.total_groups = 0
+        self.status.round_sold = 0
+        self.status.consecutive_empty = 0
+        self.status.next_scan_delay = 0
+        self.status.start_time = time.time()
+        render_panel(self.status)
 
         try:
             while self.state.is_running:
                 self._run_one_cycle_new()
+                self._keep_console_topmost()
             return "menu"
         except KeyboardInterrupt:
-            print("\n用户中断")
+            self.status.status = "已停止"
+            self.status.stop_requested = True
+            render_panel(self.status)
             return "exit"
 
     def stop(self) -> str:
@@ -219,377 +226,407 @@ class AutoSellLoop:
         }
 
     def _get_detector(self):
-        """延迟初始化物品检测器（第一次调用时初始化）
+        """延迟初始化 HybridPipeline（第一次调用时初始化）
 
         Returns:
-            检测器实例（TemplateRecognizer 或 YoloItemDetector 或 HybridPipeline）
+            HybridPipeline 实例
         """
         if self._detector is not None:
             return self._detector
 
-        if ITEM_DETECTOR_MODE == "hybrid":
-            from vision.yolo_item_detector import YoloItemDetector
-            from vision.hybrid_pipeline import HybridPipeline
+        from vision.yolo_item_detector import YoloItemDetector
+        from vision.hybrid_pipeline import HybridPipeline
 
-            yolo_detector = YoloItemDetector(
-                model_path=YOLO_MODEL_PATH,
-                confidence_threshold=YOLO_CONFIDENCE_THRESHOLD,
-                iou_threshold=YOLO_IOU_THRESHOLD,
-            )
-            self._detector = HybridPipeline(
-                yolo_detector=yolo_detector,
-                template_recognizer=self.item_recognizer,
-                max_workers=HYBRID_MAX_WORKERS,
-            )
-            get_logger().log_only("[初始化]", f"使用 Hybrid 检测器 (YOLO+模板)")
-        else:
-            # template 模式：复用已有的 item_recognizer
-            self._detector = self.item_recognizer
-            get_logger().log_only("[初始化]", "使用模板匹配检测器")
-
+        yolo_detector = YoloItemDetector(
+            model_path=YOLO_MODEL_PATH,
+            confidence_threshold=YOLO_CONFIDENCE_THRESHOLD,
+            iou_threshold=YOLO_IOU_THRESHOLD,
+        )
+        self._detector = HybridPipeline(
+            yolo_detector=yolo_detector,
+            template_recognizer=self.item_recognizer,
+            max_workers=HYBRID_MAX_WORKERS,
+        )
+        get_logger().log_only("[初始化]", "使用 Hybrid 检测器 (YOLO+模板)")
         return self._detector
 
     def _run_one_cycle_new(self) -> None:
         """Hybrid 架构一轮：检测用 pipeline，卖出用完整流程"""
+        # 停止请求：优雅退出，等当前操作完成
+        if self.status.stop_requested:
+            self.state.is_running = False
+            return
         # 菜单已显示时，直接跳过本轮所有输出
         if self.state.menu_visible:
             return
         logger = get_logger()
         self._round_counter += 1
         round_n = self._round_counter
-        print(f"开始截图识别...", flush=True)
+        self.status.round_num = round_n
+        self.status.status = "扫描中"
+        self.status.current_step = ""
+        render_panel(self.status)
 
-        # 1. 截图（背包区域）
-        from config import BACKPACK_LEFT, BACKPACK_TOP, BACKPACK_WIDTH, BACKPACK_HEIGHT
+        try:
+            # 1. 截图（背包区域）
+            from config import BACKPACK_LEFT, BACKPACK_TOP, BACKPACK_WIDTH, BACKPACK_HEIGHT
 
-        capture_start = time.time()
-        image = self.capture.capture_region(
-            BACKPACK_LEFT, BACKPACK_TOP, BACKPACK_WIDTH, BACKPACK_HEIGHT
-        )
-        capture_ms = (time.time() - capture_start) * 1000
-        roi_img = image
-        roi_origin_x = BACKPACK_LEFT
-        roi_origin_y = BACKPACK_TOP
+            capture_start = time.time()
+            image = self.capture.capture_region(
+                BACKPACK_LEFT, BACKPACK_TOP, BACKPACK_WIDTH, BACKPACK_HEIGHT
+            )
+            capture_ms = (time.time() - capture_start) * 1000
+            roi_img = image
+            roi_origin_x = BACKPACK_LEFT
+            roi_origin_y = BACKPACK_TOP
 
-        # 3. 检测 + 整理候选
-        detector = self._get_detector()
-        if ITEM_DETECTOR_MODE == "hybrid":
-            # Hybrid模式：直接用HybridPipeline处理，返回(candidates, eliminated, summary)
+            # 3. 检测 + 整理候选
+            detector = self._get_detector()
             candidates, eliminated, summary = detector.process(
                 roi_img, roi_origin_x, roi_origin_y
             )
-            raw_detections = []  # HybridPipeline内部处理，无需传调试图
-        else:
-            # template模式：模板匹配 + pipeline整理
-            raw_detections = detector.recognize_as_raw_detections(roi_img)
+            raw_detections = summary.raw_yolo_detections  # YOLO原始框（用于调试绘图）
 
-            # pipeline整理候选
-            candidates, eliminated, summary = self._candidate_pipeline.process(
-                raw_detections, roi_origin_x, roi_origin_y, roi_img
+            # 更新状态面板检测信息
+            self.status.yolo_count = summary.raw_count
+            self.status.template_count = summary.final_count
+            self.status.detect_time_ms = int((time.time() - capture_start) * 1000)
+            self.status.consecutive_empty = 0
+
+            # 5. 输出日志摘要
+            status = (
+                "无候选"
+                if summary.final_count == 0
+                else f"第一名:({summary.first_candidate.click_x},{summary.first_candidate.click_y})"
             )
-
-        # 5. 输出日志摘要
-        status = (
-            "无候选"
-            if summary.final_count == 0
-            else f"第一名:({summary.first_candidate.click_x},{summary.first_candidate.click_y})"
-        )
-        logger.log_only(
-            "[摘要]",
-            f"[轮次 {round_n}] 原始:{summary.raw_count} 过滤:{summary.filtered_count} "
-            f"去重:{summary.dedup_count} 保留:{summary.final_count} | {status}",
-        )
-
-        # DEBUG-01: Detection funnel log (D-01, D-02, D-03)
-        from config import DEBUG_MODE
-
-        if DEBUG_MODE:
-            template_count = getattr(summary, "template_match_count", 0)
-            funnel_str = f"YOLO:{summary.raw_count} → Template:{template_count} → IconFilter:{summary.filtered_count} → Dedup:{summary.dedup_count} → Final:{summary.final_count}"
-            logger.log_only("[识别]", funnel_str)
-
-            # DEBUG-02: Stage timing log (D-04, D-05, D-06)
-            timing_str = f"[耗时] capture={capture_ms:.0f}ms"
-            logger.log_only("[识别]", timing_str)
-
-        # 5b. 显示待出售物品清单（控制台 + 文件）
-        if self.state.menu_visible:
-            return
-        if candidates:
-            lines = ["待出售:"]
-            for i, c in enumerate(candidates, 1):
-                lines.append(f"  [{i}] {c.template_name}")
-            item_text = "\n".join(lines)
             logger.log_only(
-                "[清单]", f"待出售: " + " | ".join(c.template_name for c in candidates)
+                "[摘要]",
+                f"[轮次 {round_n}] 原始:{summary.raw_count} 过滤:{summary.filtered_count} "
+                f"去重:{summary.dedup_count} 保留:{summary.final_count} | {status}",
             )
-            print(item_text, flush=True)
-        else:
-            logger.log_only("[清单]", f"待出售: 无")
-            print(f"待出售: 无", flush=True)
 
-        # 6. 保存调试图
-        save_debug_frame(
-            roi_img=roi_img,
-            raw_detections=raw_detections,
-            candidates=candidates,
-            eliminated=eliminated,
-            summary=summary,
-            round_n=round_n,
-            roi_origin_x=roi_origin_x,
-            roi_origin_y=roi_origin_y,
-            debug_dir=str(DEBUG_DIR),
-            save=SAVE_DEBUG_IMAGES,
-            all_template_matches=candidates,  # Show ALL boxes with template names
-        )
+            # DEBUG-01: Detection funnel log (D-01, D-02, D-03)
+            from config import DEBUG_MODE
 
-        if not candidates:
-            # 空闲检测：递增连续未识别次数
-            self.state.consecutive_empty += 1
-            # 根据连续失败次数选择延迟（阶梯递增）
-            delay_idx = min(self.state.consecutive_empty - 1, len(IDLE_DELAYS) - 1)
-            self.state.idle_delay = IDLE_DELAYS[delay_idx]
-            logger.log_only(
-                "[识别]",
-                f"未识别到物品 (连续{self.state.consecutive_empty}次, 延迟{self.state.idle_delay:.1f}s)",
-            )
-            print(
-                f"冷却中... ({self.state.idle_delay:.1f}s)   按 F8 暂停",
-                flush=True,
-            )
-            # 可中断的睡眠（按 F8 显示菜单后立即退出）
-            elapsed = 0.0
-            while elapsed < self.state.idle_delay and not self.state.menu_visible:
-                time.sleep(0.1)
-                elapsed += 0.1
-            # 退出前清除"冷却中..."行（用空格覆盖，回到行首）
-            if self.state.menu_visible:
-                print("\r" + " " * 50 + "\r", end="", flush=True)
-            return
+            if DEBUG_MODE:
+                template_count = getattr(summary, "template_match_count", 0)
+                funnel_str = f"YOLO:{summary.raw_count} → Template:{template_count} → IconFilter:{summary.filtered_count} → Dedup:{summary.dedup_count} → Final:{summary.final_count}"
+                logger.log_only("[识别]", funnel_str)
 
-        # 8. 逐个处理候选（按 pipeline 排序）
-        sold_count = 0
-        skipped_names: set = set()  # 记录因验证失败而跳过的物品名
+                # DEBUG-02: Stage timing log (D-04, D-05, D-06)
+                timing_str = f"[耗时] capture={capture_ms:.0f}ms"
+                logger.log_only("[识别]", timing_str)
 
-        # 7. 重置空闲检测（检测到物品后立即重置，不等循环处理完）
-        self.state.consecutive_empty = 0
-        self.state.idle_delay = LOOP_DELAY
-
-        for candidate in candidates:
-            if not self.state.is_running:
-                break
-
-            logger.print_only(f"正在出售: {candidate.template_name}")
-            if self.state.menu_visible:
-                break
-
-            # 如果这个物品名之前已经验证失败过（同名物品已卖出），直接跳过
-            if candidate.template_name in skipped_names:
+            # 5b. 更新状态面板识别信息
+            if candidates:
+                names = list(dict.fromkeys(c.template_name for c in candidates))
+                self.status.item_preview = names[:5]
+                self.status.total_types = len(names)
                 logger.log_only(
-                    "[操作]",
-                    f"跳过 {candidate.template_name} (同名物品已卖出)",
+                    "[清单]", f"待出售: " + " | ".join(f"{c.template_name}({c.confidence:.2f})" for c in candidates)
                 )
-                logger.print_only(f"跳过: {candidate.template_name} (同名物品已卖出)")
-                continue
+            else:
+                self.status.item_preview = []
+                self.status.total_types = 0
+                logger.log_only("[清单]", f"待出售: 无")
+
+            # 6. 保存调试图
+            save_debug_frame(
+                roi_img=roi_img,
+                raw_detections=raw_detections,
+                candidates=candidates,
+                eliminated=eliminated,
+                summary=summary,
+                round_n=round_n,
+                roi_origin_x=roi_origin_x,
+                roi_origin_y=roi_origin_y,
+                debug_dir=str(DEBUG_DIR),
+                save=SAVE_DEBUG_IMAGES,
+                all_template_matches=candidates,  # Show ALL boxes with template names
+            )
+
+            if not candidates:
+                # 空闲检测：递增连续未识别次数
+                self.state.consecutive_empty += 1
+                delay_idx = min(self.state.consecutive_empty - 1, len(IDLE_DELAYS) - 1)
+                self.state.idle_delay = IDLE_DELAYS[delay_idx]
+                self.status.status = "等待物品中"
+                self.status.consecutive_empty = self.state.consecutive_empty
+                self.status.next_scan_delay = self.state.idle_delay
+                self.status.current_item = ""
+                self.status.current_step = ""
+                self.status.item_preview = []
+                self.status.total_types = 0
+                self.status.add_event(
+                    f"未识别到物品，连续{self.state.consecutive_empty}次"
+                )
+                render_panel(self.status)
+                logger.log_only(
+                    "[识别]",
+                    f"未识别到物品 (连续{self.state.consecutive_empty}次, 延迟{self.state.idle_delay:.1f}s)",
+                )
+                # 可中断的睡眠
+                elapsed = 0.0
+                while elapsed < self.state.idle_delay and not self.state.menu_visible:
+                    time.sleep(0.1)
+                    elapsed += 0.1
+                return
+
+            # 捕获背包参考截图（用于验证后续UI是否仍在）
+            self._update_backpack_ref()
+
+            # 8. 按类型分组，批量处理所有组
+            self.state.consecutive_empty = 0
+            self.state.idle_delay = LOOP_DELAY
+            self.status.next_scan_delay = 0
+
+            groups = _group_by_type(candidates)
+            total_groups = len(groups)
+            groups_sold = 0
+            self.status.type_groups = total_groups
+            self.status.total_groups = total_groups
+            self.status.status = "批量处理中"
 
             logger.log_only(
                 "[操作]",
-                f"准备处理: {candidate.template_name} ({candidate.click_x}, {candidate.click_y})",
+                f"类型分组: {total_groups}组, 开始批量处理",
             )
 
-            # 9. 截取候选区域快照（用于验证和卖出流程，只截取一次）
-            snap_width = candidate.screen_w + VERIFY_MARGIN * 2
-            snap_height = candidate.screen_h + VERIFY_MARGIN * 2
-            snapshot = self._capture_region(
-                candidate.click_x, candidate.click_y, snap_width, snap_height
-            )
+            # 激活游戏窗口（确保点击生效）
+            focus_window("三角洲行动")
 
-            # 10. 验证候选仍在原位（使用已捕获的快照，不重复截图）
-            verified = self._verify_candidate(candidate, snapshot)
-            if not verified:
-                # 记录这个物品名，下次遇到同名物品直接跳过
-                skipped_names.add(candidate.template_name)
+            for idx, group in enumerate(groups, 1):
+                # 检查停止请求
+                if self.status.stop_requested or self.state.menu_visible:
+                    logger.log_only("[操作]", "停止请求，中断当前批处理")
+                    self.status.add_event("停止请求，中断批处理")
+                    break
+
+                target = group[0]
+                self.status.current_group = idx
+                self.status.current_item = target.template_name or "unknown"
+                self.status.current_step = "1/4 移动到物品"
+                self.status.round_sold = groups_sold
+
                 logger.log_only(
-                    "[验证]",
-                    f"验证失败，跳过同名物品: {candidate.template_name}",
+                    "[操作]",
+                    f"处理第{idx}/{total_groups}组: {target.template_name} ({target.click_x}, {target.click_y})",
                 )
-                continue  # 继续处理下一个物品，而不是 break
 
-            # 11. 构造 ItemRecord 并执行完整卖出流程（复用已捕获的快照）
-            record = ItemRecord(
-                name=candidate.template_name,
-                x=candidate.click_x,
-                y=candidate.click_y,
-                width=candidate.screen_w,
-                height=candidate.screen_h,
-                confidence=candidate.confidence,
-                snapshot=snapshot,
-            )
-            self._sell_item_with_log(record, skipped_names)
-            sold_count += 1
-            logger.print_only(f"已出售: {record.name}")
-            self.state.processed_positions.add(
-                (
-                    candidate.click_x // DEDUP_DISTANCE,
-                    candidate.click_y // DEDUP_DISTANCE,
+                record = ItemRecord(
+                    name=target.template_name,
+                    x=target.click_x,
+                    y=target.click_y,
+                    width=target.screen_w,
+                    height=target.screen_h,
+                    confidence=target.confidence,
                 )
-            )
+                ok = self._sell_item_with_log(record)
+                if ok:
+                    groups_sold += 1
+                    self.status.round_sold = groups_sold
+                else:
+                    logger.log_only("[操作]", f"第{idx}组卖出失败，中断当前批处理")
+                    self.status.add_event(f"第{idx}组失败，中断批处理")
+                    break
 
-        # 11. 输出统计
-        if self.state.menu_visible:
-            return
-        logger.print_only(f"本轮: 卖出 {sold_count}/{len(candidates)}   按 F8 暂停")
-        logger.log_only(
-            "[统计]",
-            f"本轮: 卖出 {sold_count}/{len(candidates)}",
-        )
+            self.status.total_sold = self.state.total_sold
+            self.status.status = "批量完成"
+            render_panel(self.status)
 
-        # 循环间隔
-        time.sleep(LOOP_DELAY)
+            # 循环间隔
+            time.sleep(LOOP_DELAY)
+        except Exception as e:
+            logger.error(f"[轮次 {round_n}] 循环异常: {type(e).__name__}: {e}")
+            time.sleep(LOOP_DELAY)
 
-    def _verify_candidate(
-        self, candidate: ItemCandidate, snapshot: Optional[np.ndarray]
-    ) -> bool:
-        """对候选进行最终确认（鼠标移动前验证）
-
-        拍当前画面与 snapshot 做 MSE 对比，物品已消失则跳过。
-
-        Args:
-            candidate: 候选物品
-            snapshot: 已捕获的候选区域快照
-
-        Returns:
-            True 表示确认通过，False 表示物品已变化
-        """
-        if snapshot is None:
-            return True
-
-        # 拍当前画面
-        check_width = candidate.screen_w + VERIFY_MARGIN * 2
-        check_height = candidate.screen_h + VERIFY_MARGIN * 2
-        current = self._capture_region(
-            candidate.click_x, candidate.click_y, check_width, check_height
-        )
-        if current is None:
-            return True
-
-        mse = compare_images_mse(snapshot, current)
-        if mse >= VERIFY_MSE_THRESHOLD:
-            return False
-        return True
-
-    def _sell_item_with_log(self, record: ItemRecord, skipped_names: set) -> None:
-        """卖出单个物品（分层重试机制）。
+    def _sell_item_with_log(self, record: ItemRecord) -> bool:
+        """卖出单个物品（9步流程）。
 
         Args:
             record: 物品记录
-            skipped_names: 因卖出失败而跳过的物品名集合，调用方传入同一集合
         """
         logger = get_logger()
         item_name = record.name
         x = record.x
         y = record.y
         sell_start = time.time()
-        logger.print_only(f"正在出售: {item_name}")
 
-        def _skip(reason: str) -> None:
-            skipped_names.add(item_name)
-            logger.log_only("[操作]", f"[{item_name}] {reason}，跳过")
-            logger.print_only(f"跳过: {item_name} ({reason})")
+        try:
 
-        # ========== 步骤 1: 鼠标移动 ==========
-        logger.step(f"[{item_name}] 鼠标移动到 ({x}, {y})")
-        self.mouse.move_to(x, y)
-        time.sleep(random.uniform(0.1, 0.15))
+            # ========== 步骤 1: 鼠标移动到目标位置 ==========
+            logger.step(f"[{item_name}] [1/4] 鼠标移动到 ({x}, {y})")
+            self.status.current_step = "1/4 移动到物品"
+            render_panel(self.status)
+            self.mouse.move_to(x, y)
+            time.sleep(random.uniform(0.1, 0.15))
 
-        # ========== 检查是否为空格子 ==========
-        if self._is_empty_slot(x, y):
-            _skip("空白格子")
-            return
+            # ========== 检查背包页面是否还在 ==========
+            if not self._is_backpack_visible():
+                logger.log_only("[操作]", f"[{item_name}] 背包页面已关闭，中断批处理")
+                self.status.add_event(f"跳过 {item_name} (背包关闭)")
+                self.status.current_step = ""
+                self.status.current_item = ""
+                render_panel(self.status)
+                return False
 
-        # ========== 步骤 2: 按 Alt+D ==========
-        self.keyboard.alt_d()
-        logger.step(f"[{item_name}] 按下 Alt+D")
-        time.sleep(random.uniform(0.3, 0.4))
+            # ========== 检查是否为空格子 ==========
+            _empty = self._is_empty_slot(x, y)
+            logger.step(f"[{item_name}] 空格子: {_empty}")
+            if _empty:
+                logger.log_only("[操作]", f"[{item_name}] 空白格子，跳过")
+                self.status.add_event(f"跳过 {item_name} (空格子)")
+                self.status.current_step = ""
+                self.status.current_item = ""
+                render_panel(self.status)
+                return False
 
-        # ========== 步骤 3: upload1 ==========
-        if USE_FIXED_COORDINATES:
-            # 先验证 upload1 区域有没有绿色，没有绿色则跳过
-            if not self._has_green_button(1300, 670, 1500, 720):
-                _skip("upload1 区域无绿色")
-                self.keyboard.press("escape")
-                time.sleep(random.uniform(0.2, 0.3))
-                return
-            self.mouse.click(UPLOAD1_X, UPLOAD1_Y)
-            logger.step(
-                f"[{item_name}] 点击 upload1 (固定坐标: {UPLOAD1_X}, {UPLOAD1_Y})"
-            )
-        else:
-            upload1_result = self._find_ui_element("upload1", x, y)
-            if not upload1_result:
-                logger.step(f"[{item_name}] 未找到 upload1，第1次重试...")
-                time.sleep(0.3)
-                upload1_result = self._find_ui_element("upload1", x, y)
-                if not upload1_result:
-                    logger.step(f"[{item_name}] 未找到 upload1，ESC 退回，跳过")
-                    self.keyboard.press("escape")
-                    time.sleep(random.uniform(0.2, 0.3))
-                    _skip("未找到 upload1")
-                    return
-            self.mouse.click(upload1_result.center_x, upload1_result.center_y)
-            logger.step(
-                f"[{item_name}] 点击 upload1 ({upload1_result.center_x}, {upload1_result.center_y})"
-            )
-            time.sleep(random.uniform(0.15, 0.2))
+            # ========== 左键点击（自动弹出上架界面）==========
+            self.mouse.click()
+            time.sleep(random.uniform(0.05, 0.1))
 
-        # ========== 步骤 5: upload2 ==========
-        if USE_FIXED_COORDINATES:
             upload2_x = UPLOAD2_X
             upload2_y = UPLOAD2_Y
-        else:
-            upload2_result = self._find_ui_element("upload2", x, y)
-            if not upload2_result:
-                logger.step(f"[{item_name}] 未找到 upload2，第1次重试...")
-                time.sleep(0.3)
-                upload2_result = self._find_ui_element("upload2", x, y)
-                if not upload2_result:
-                    logger.step(f"[{item_name}] 未找到 upload2，ESC 退回，跳过")
-                    self.keyboard.press("escape")
-                    time.sleep(random.uniform(0.2, 0.3))
-                    _skip("未找到 upload2")
-                    return
-            upload2_x = upload2_result.center_x
-            upload2_y = upload2_result.center_y
 
-        # ========== 步骤 6: 点击数量按钮 ==========
-        quantity_x = upload2_x + QUANTITY_OFFSET_X
-        quantity_y = upload2_y + QUANTITY_OFFSET_Y
-        for i in range(3):
-            self.mouse.click(quantity_x, quantity_y)
-            time.sleep(random.uniform(0.05, 0.1))
-        logger.step(f"[{item_name}] 点击数量按钮 3次 ({quantity_x}, {quantity_y})")
-        time.sleep(random.uniform(0.1, 0.2))
+            # ========== 步骤 2: 点击数量按钮 ×3 ==========
+            self.status.current_step = "2/4 设置数量"
+            render_panel(self.status)
+            quantity_x = upload2_x + QUANTITY_OFFSET_X
+            quantity_y = upload2_y + QUANTITY_OFFSET_Y
+            for i in range(3):
+                self.mouse.click(quantity_x, quantity_y)
+                time.sleep(random.uniform(0.05, 0.1))
+            logger.step(f"[{item_name}] [2/4] 点击数量按钮 3次 ({quantity_x}, {quantity_y})")
+            time.sleep(random.uniform(0.1, 0.2))
 
-        # ========== 步骤 7: 输入价格 ==========
-        price_input_x = upload2_x + PRICE_OFFSET_X
-        price_input_y = upload2_y + PRICE_OFFSET_Y
+            # ========== 步骤 3: 输入价格 ==========
+            self.status.current_step = "3/4 设置价格"
+            render_panel(self.status)
+            price_input_x = upload2_x + PRICE_OFFSET_X
+            price_input_y = upload2_y + PRICE_OFFSET_Y
 
-        self.mouse.click(price_input_x, price_input_y)
-        time.sleep(0.1)
-        self.keyboard.press("backspace")
-        time.sleep(0.1)
-        self.mouse.click(PRICE_DIRECT_CLICK_X, price_input_y)
-        logger.step(f"[{item_name}] 输入价格: 退格后点击{PRICE_DIRECT_CLICK_X}坐标")
-        time.sleep(random.uniform(0.1, 0.2))
+            self.mouse.click(price_input_x, price_input_y)
+            time.sleep(0.1)
+            self.keyboard.press("backspace")
+            time.sleep(0.1)
+            self.mouse.click(PRICE_DIRECT_CLICK_X, price_input_y)
+            logger.step(f"[{item_name}] [3/4] 输入价格: 退格后点击{PRICE_DIRECT_CLICK_X}坐标")
+            time.sleep(random.uniform(0.1, 0.2))
 
-        # ========== 步骤 8: 点击 upload2 确认 ==========
-        self.mouse.click(upload2_x, upload2_y)
-        logger.step(f"[{item_name}] 点击 upload2 确认 ({upload2_x}, {upload2_y})")
+            # ========== 步骤 4: 点击 upload2 确认 ==========
+            self.status.current_step = "4/4 确认上架"
+            render_panel(self.status)
+            self.mouse.click(upload2_x, upload2_y)
+            logger.step(f"[{item_name}] [4/4] 点击 upload2 确认 ({upload2_x}, {upload2_y})")
 
-        # 成功完成
-        sell_time = time.time() - sell_start
-        self.state.total_sold += 1
-        logger.log_only("[统计]", f"卖出 {item_name} (耗时 {sell_time:.1f}s)")
+            # 成功完成
+            sell_time = time.time() - sell_start
+            self.state.total_sold += 1
+            self.status.total_sold = self.state.total_sold
+            self.status.add_event(f"成功卖出 {item_name}，用时 {sell_time:.1f}s")
+            logger.log_only("[统计]", f"卖出 {item_name} (耗时 {sell_time:.1f}s)")
+            return True
+        except Exception as e:
+            logger.error(f"[{item_name}] 出售异常: {type(e).__name__}: {e}")
+            self.status.add_event(f"异常: {item_name}")
+            self.status.current_step = ""
+            self.status.current_item = ""
+            render_panel(self.status)
+            return False
+
+    def _update_backpack_ref(self) -> None:
+        """从参考区域 (1180,150)-(1200,170) 采集 10 个锚点像素
+
+        取背包左边框区域（不会因物品变化而改变），用于验证背包UI是否仍在。
+
+        注意：(1180,150)-(1350,170) 的右半部分在背包格子内，
+        物品卖出后像素会变，因此只取左半 (1180,150)-(1200,170)。
+        """
+        # 5 列 × 2 行，均匀分布在 20×20 的边框区域内
+        coords = [
+            (1180 + 2 + col * 4, 150 + 5 + row * 10)
+            for col in range(5) for row in range(2)
+        ]
+        colors = self._peek_pixels(coords)
+        ref_pixels = [
+            (coord, color) for coord, color in zip(coords, colors) if color is not None
+        ]
+        self._backpack_ref = ref_pixels
+        if ref_pixels:
+            logger = get_logger()
+            logger.log_only(
+                "[识别]", f"背包锚点: 采集 {len(ref_pixels)}/10 个像素"
+            )
+
+    def _is_backpack_visible(self) -> bool:
+        """重新读取 10 个像素，与保存的锚点对比
+
+        Returns:
+            True 表示背包UI仍在，False 表示可能已关闭
+        """
+        if not self._backpack_ref:
+            return True  # 无参考时放行
+        coords = [pxy for (pxy, _) in self._backpack_ref]
+        colors = self._peek_pixels(coords)
+        mismatches = 0
+        for ref_color, current in zip(
+            [c for _, c in self._backpack_ref], colors
+        ):
+            if current is None:
+                continue
+            # RGB 各通道偏差在 30 以内视为一致
+            if not all(abs(current[i] - ref_color[i]) < 30 for i in range(3)):
+                mismatches += 1
+        # 超过 3 个像素不一致则判定背包已关闭
+        return mismatches <= 3
+
+    @staticmethod
+    def _peek_pixels(coords: List[Tuple[int, int]]) -> List[Optional[Tuple[int, int, int]]]:
+        """用 Win32 API 批量读取屏幕像素 RGB 值（共享 DC，减少开销）
+
+        Args:
+            coords: (x, y) 坐标列表
+
+        Returns:
+            (r, g, b) 元组列表，失败的条目为 None
+        """
+        import win32gui
+        import win32api
+        try:
+            hdc = win32gui.GetDC(None)
+            results: List[Optional[Tuple[int, int, int]]] = []
+            for x, y in coords:
+                try:
+                    color = win32api.GetPixel(hdc, x, y)
+                    r = color & 0xFF
+                    g = (color >> 8) & 0xFF
+                    b = (color >> 16) & 0xFF
+                    results.append((r, g, b))
+                except Exception:
+                    results.append(None)
+            win32gui.ReleaseDC(None, hdc)
+            return results
+        except Exception:
+            return [None] * len(coords)
+
+    @staticmethod
+    def _peek_pixel(x: int, y: int) -> Optional[Tuple[int, int, int]]:
+        """用 Win32 API 读取屏幕上一个像素的 RGB 值"""
+        return AutoSellLoop._peek_pixels([(x, y)])[0]
+
+    @staticmethod
+    def _keep_console_topmost() -> None:
+        """恢复控制台窗口为置顶状态（每轮调用一次，约 0.1ms）"""
+        try:
+            import ctypes
+            ctypes.windll.user32.SetWindowPos(
+                ctypes.windll.kernel32.GetConsoleWindow(),
+                -1,  # HWND_TOPMOST
+                0, 0, 0, 0,
+                0x0001 | 0x0002,  # SWP_NOSIZE | SWP_NOMOVE
+            )
+        except Exception:
+            pass
 
     def _has_green_button(self, x1: int, y1: int, x2: int, y2: int) -> bool:
         """检查指定区域是否有绿色按钮

@@ -62,3 +62,4 @@ class RoundSummary:
     first_candidate: Optional[ItemCandidate] = None  # 第一名候选
     verification_passed: Optional[bool] = None  # 第三段回填
     action_taken: bool = False  # 第三段回填
+    raw_yolo_detections: list = field(default_factory=list)  # YOLO 原始检测框（用于调试绘图）

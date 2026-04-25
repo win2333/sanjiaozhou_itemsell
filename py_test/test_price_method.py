@@ -1,10 +1,8 @@
-"""测试新价格输入方法的完整流程
+"""测试价格输入流程
 
 运行方式:
-1. 先确保 config.py 中 USE_NEW_PRICE_METHOD = True
-2. 打开游戏，进入卖货界面
-3. 运行: python py_test/test_price_method.py
-4. 程序会等待3秒后执行点击流程
+1. 打开游戏，进入卖货界面
+2. 运行: python py_test/test_price_method.py
 """
 
 import sys
@@ -13,7 +11,6 @@ import time
 sys.path.insert(0, ".")
 
 from config import (
-    USE_NEW_PRICE_METHOD,
     PRICE_DIRECT_CLICK_X,
     UPLOAD2_X,
     UPLOAD2_Y,
@@ -31,16 +28,11 @@ PRICE_INPUT_Y = UPLOAD2_Y + PRICE_OFFSET_Y
 def test_price_input_flow():
     """测试价格输入流程"""
     print("=" * 50)
-    print("新价格输入方法测试")
+    print("价格输入方法测试")
     print("=" * 50)
 
     print(f"\n[配置]")
-    print(f"  USE_NEW_PRICE_METHOD = {USE_NEW_PRICE_METHOD}")
     print(f"  PRICE_DIRECT_CLICK_X = {PRICE_DIRECT_CLICK_X}")
-
-    if not USE_NEW_PRICE_METHOD:
-        print("\n[错误] 请先在 config.py 中设置 USE_NEW_PRICE_METHOD = True")
-        return
 
     mouse = MouseController()
     keyboard = KeyboardController()

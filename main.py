@@ -1,200 +1,92 @@
 """自动卖货助手 - 主入口"""
 
-import signal
-import sys
-import threading
 import time
-from pathlib import Path
+
+import keyboard
 
 from vision.capture import ScreenCapture
 from vision.recognizer import TemplateRecognizer
 from vision.price_reader import PriceReader
 from control.mouse import MouseController
 from control.keyboard import KeyboardController
-from core.hotkey import HotkeyManager
 from core.loop import AutoSellLoop
-from core.menu import SimpleMenu
 from config import (
     TEMPLATE_MATCH_THRESHOLD,
-    UI_TEMPLATE_THRESHOLD,
     TEMPLATES_DIR,
-    UI_TEMPLATES_DIR,
     USE_GPU_TEMPLATE_RECOGNITION,
     USE_FIXED_COORDINATES,
-    DEBUG_MODE,
 )
 
 
-# 全局实例（重新开始时复用）
-_loop: AutoSellLoop = None
-_menu: SimpleMenu = None
-_hotkey: HotkeyManager = None
-_logs_dir = Path(__file__).parent / "logs"  # 缓存日志目录
-
-
-def signal_handler(signum, frame):
-    """信号处理"""
-    from utils.logger import close_logger
-    close_logger()
-    print("\n正在退出...")
-    sys.exit(0)
-
-
-def init_components() -> tuple:
-    """初始化所有组件（只执行一次）"""
-    global _loop, _menu, _hotkey
-
-    if _loop is not None:
-        return _loop, _menu, _hotkey
-
-    _hotkey = HotkeyManager()
-
+def init_components() -> AutoSellLoop:
+    """初始化所有组件"""
     # 加载物品模板
     item_recognizer = TemplateRecognizer(
         str(TEMPLATES_DIR), threshold=TEMPLATE_MATCH_THRESHOLD, use_gpu=USE_GPU_TEMPLATE_RECOGNITION
     )
     item_templates = item_recognizer.load_templates()
-    print(f"已加载 {len(item_templates)} 个物品模板")
-    print(f"物品模板识别后端: {'GPU' if item_recognizer.use_gpu else 'CPU'}")
 
     if not item_templates:
-        print("\n警告: 没有找到物品模板图片！")
+        print(f"\n警告: 没有找到物品模板图片！")
         print(f"请将物品截图放到: {TEMPLATES_DIR}")
 
-    # 加载UI模板（固定坐标模式下跳过）
-    ui_recognizer = TemplateRecognizer(
-        str(UI_TEMPLATES_DIR), threshold=UI_TEMPLATE_THRESHOLD, use_gpu=USE_GPU_TEMPLATE_RECOGNITION
-    )
-    if USE_FIXED_COORDINATES:
-        print("UI模板: 跳过（使用固定坐标）")
-    else:
-        ui_templates = ui_recognizer.load_templates()
-        print(f"UI模板识别后端: {'GPU' if ui_recognizer.use_gpu else 'CPU'}")
-
-    # 初始化价格识别器
-    price_reader = PriceReader()
+    # UI模板识别器（固定坐标模式下不加载模板）
+    ui_recognizer = TemplateRecognizer("", threshold=0.75, use_gpu=USE_GPU_TEMPLATE_RECOGNITION)
+    if not USE_FIXED_COORDINATES:
+        ui_recognizer.load_templates()
 
     # 创建主循环
-    _loop = AutoSellLoop(
+    return AutoSellLoop(
         item_recognizer=item_recognizer,
         ui_recognizer=ui_recognizer,
         capture=ScreenCapture(),
         mouse=MouseController(),
         keyboard=KeyboardController(),
-        price_reader=price_reader,
+        price_reader=PriceReader(),
     )
-
-    # 初始化菜单
-    _menu = SimpleMenu(
-        get_stats_func=lambda: _loop.get_stats(),
-        get_logs_dir_func=lambda: _logs_dir
-    )
-
-    return _loop, _menu, _hotkey
 
 
 def main():
     """主函数"""
-    signal.signal(signal.SIGINT, signal_handler)
-
-    if DEBUG_MODE:
-        print("=" * 50)
-        print("【DEBUG 模式】FPS 游戏自动卖货助手")
-        print("按 F8 开始/停止")
-        print("=" * 50)
-    else:
-        print("FPS 游戏自动卖货助手")
-        print("按 F8 暂停")
+    # 控制台窗口保持最前
+    from core.loop import AutoSellLoop
+    AutoSellLoop._keep_console_topmost()
 
     # 初始化组件
-    loop, menu, hotkey = init_components()
+    loop = init_components()
 
-    # 状态: 'idle', 'running', 'menu'
-    state = 'idle'
-    menu_action = None
-    _during_startup = True  # 第一次启动期间禁止重复倒计时
+    # F8 停止回调（仅设标志位，由主线程处理）
+    def on_f8():
+        if not loop.status.stop_requested:
+            loop.status.stop_requested = True
+            loop.status.status = "停止请求中"
+            from utils.status_panel import render
+            render(loop.status)
 
-    # 菜单模式下的热键回调
-    def on_restart():
-        nonlocal menu_action
-        menu_action = "restart"
+    # 注册 F8 热键（全局生效，游戏前台也能用）
+    keyboard.add_hotkey("f8", on_f8)
 
-    def on_exit():
-        nonlocal menu_action
-        menu_action = "exit"
-
-    # 运行模式下的热键回调
-    def on_toggle():
-        nonlocal state, _during_startup
-        if state == 'running':
-            state = 'menu'
-            loop.stop()
-            menu.show()
-        elif not _during_startup:
-            state = 'running'
-
-    # 注册热键
-    hotkey.register_start_stop("f8", on_toggle, on_toggle)
-
-    # 菜单模式监听 F8/F9
-    def start_menu_listener():
-        nonlocal menu_action
-        hotkey.register("f8", on_restart)
-        hotkey.register("f9", on_exit)
-        while menu_action is None:
-            hotkey.process_once()
-            time.sleep(0.05)
-
-    # 监听循环
-    while True:
-        if state == 'running':
-            hotkey.start_listening()
-        elif state == 'menu':
-            menu_action = None
-            start_menu_listener()
-            if menu_action == "restart":
-                print("\n重新开始...")
-                _countdown(3)
-                thread = threading.Thread(target=_run_loop, args=(loop, lambda: state == 'running'), daemon=True)
-                thread.start()
-                hotkey.start_listening()
-            elif menu_action == "exit":
-                print("\n正在退出...")
-                from utils.logger import close_logger
-                close_logger()
-                hotkey.stop_listening()
-                sys.exit(0)
-        else:  # idle
-            if _during_startup:
-                # 第一次：自动倒计时启动
-                _during_startup = False
-                _countdown(3)
-                state = 'running'
-                thread = threading.Thread(target=_run_loop, args=(loop, lambda: state == 'running'), daemon=True)
-                thread.start()
-                hotkey.start_listening()
-            else:
-                # 暂停后再按 F8
-                print("请按 F8 继续...")
-                hotkey.start_listening()
-
-
-def _countdown(seconds: int = 3) -> None:
-    """显示倒计时"""
-    import sys
-    print("请等待，3秒钟后自动开始...")
-    for i in range(seconds, 0, -1):
-        print(f"  {i}...", end="", flush=True)
-        time.sleep(1)
-    print("\r      \r", end="", flush=True)
-
-
-def _run_loop(loop: AutoSellLoop, is_running_check):
-    """运行主循环（用于线程）"""
-    while is_running_check():
-        action = loop.start()
-        if action == "exit":
+    # 倒计时 3 秒
+    for _ in range(3):
+        if loop.status.stop_requested:
             break
+        time.sleep(1)
+
+    # 运行，直到 F8 或 Ctrl+C
+    try:
+        while not loop.status.stop_requested:
+            action = loop.start()
+            if action == "exit":
+                break
+    except KeyboardInterrupt:
+        loop.status.stop_requested = True
+        loop.status.status = "已停止"
+        from utils.status_panel import render
+        render(loop.status)
+    finally:
+        from utils.logger import close_logger
+        close_logger()
+        keyboard.unhook_all()
 
 
 if __name__ == "__main__":

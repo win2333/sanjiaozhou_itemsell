@@ -1,5 +1,6 @@
-# Debug 图片
+# Debug 图片和目录
 debug_*.png
+debug/
 
 # 日志
 logs/
@@ -28,6 +29,9 @@ Thumbs.db
 
 # Windows 特殊文件
 nul
+
+# Claude Code 用户配置
+.claude/
 
 # Git worktrees
 .worktrees/
