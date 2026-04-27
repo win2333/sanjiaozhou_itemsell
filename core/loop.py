@@ -27,15 +27,16 @@ from config import (
     YOLO_MODEL_PATH,
     YOLO_CONFIDENCE_THRESHOLD,
     YOLO_IOU_THRESHOLD,
-    ICON_FILTER_THRESHOLD,
-    ICON_TEMPLATE_PATH,
     DEDUP_DISTANCE_PX,
     SAVE_DEBUG_IMAGES,
     DEBUG_DIR,
     HYBRID_MAX_WORKERS,
+    BACKPACK_LEFT,
+    BACKPACK_TOP,
+    BACKPACK_WIDTH,
+    BACKPACK_HEIGHT,
 )
 from vision.item_types import ItemCandidate, RoundSummary
-from vision.item_candidate_pipeline import ItemCandidatePipeline
 from utils.debug_visualizer import save_debug_frame
 from utils.status_panel import Status, render as render_panel
 
@@ -122,31 +123,11 @@ class AutoSellLoop:
         self.state = SellState()
         self.start_time: Optional[float] = None  # 运行开始时间
 
-        # 加载 icon 模板（不能卖图标）
-        icon_templates: List[np.ndarray] = []
-        icon_path = ICON_TEMPLATE_PATH
-        if icon_path:
-            try:
-                icon_img = cv2.imread(icon_path, cv2.IMREAD_COLOR)
-                if icon_img is not None:
-                    icon_templates.append(icon_img)
-                    get_logger().log_only("[初始化]", f"已加载 icon 模板: {icon_path}")
-                else:
-                    get_logger().log_only(
-                        "[初始化]", f"无法读取 icon 模板: {icon_path}"
-                    )
-            except Exception as e:
-                get_logger().log_only("[初始化]", f"加载 icon 模板失败: {e}")
-
-        self._candidate_pipeline = ItemCandidatePipeline(
-            icon_filter_threshold=ICON_FILTER_THRESHOLD,
-            dedup_distance_px=DEDUP_DISTANCE_PX,
-            icon_templates=icon_templates,
-        )
         self._round_counter: int = 0
         self._detector = None  # 延迟初始化（YOLO 模型加载较慢）
         self._backpack_ref = None  # 背包参考截图，用于验证UI是否仍在
         self.status = Status()  # 状态面板
+        self._consecutive_cycle_errors = 0
 
     def start(self) -> str:
         """开始自动卖出
@@ -182,6 +163,9 @@ class AutoSellLoop:
         self.status.next_scan_delay = 0
         self.status.start_time = time.time()
         render_panel(self.status)
+
+        if not self._validate_runtime_environment():
+            return "exit"
 
         try:
             while self.state.is_running:
@@ -269,8 +253,6 @@ class AutoSellLoop:
 
         try:
             # 1. 截图（背包区域）
-            from config import BACKPACK_LEFT, BACKPACK_TOP, BACKPACK_WIDTH, BACKPACK_HEIGHT
-
             capture_start = time.time()
             image = self.capture.capture_region(
                 BACKPACK_LEFT, BACKPACK_TOP, BACKPACK_WIDTH, BACKPACK_HEIGHT
@@ -281,7 +263,20 @@ class AutoSellLoop:
             roi_origin_y = BACKPACK_TOP
 
             # 3. 检测 + 整理候选
-            detector = self._get_detector()
+            try:
+                detector = self._get_detector()
+            except Exception as e:
+                logger.error(
+                    f"检测器初始化失败: {type(e).__name__}: {e}",
+                    include_traceback=True,
+                )
+                self.status.status = "致命错误"
+                self.status.stop_requested = True
+                self.status.add_event(f"检测器初始化失败: {type(e).__name__}")
+                render_panel(self.status)
+                self.state.is_running = False
+                return
+
             candidates, eliminated, summary = detector.process(
                 roi_img, roi_origin_x, roi_origin_y
             )
@@ -319,7 +314,7 @@ class AutoSellLoop:
 
             # 5b. 更新状态面板识别信息
             if candidates:
-                names = list(dict.fromkeys(c.template_name for c in candidates))
+                names = list(dict.fromkeys(c.template_name or "unknown" for c in candidates))
                 self.status.item_preview = names[:5]
                 self.status.total_types = len(names)
                 logger.log_only(
@@ -344,6 +339,7 @@ class AutoSellLoop:
                 save=SAVE_DEBUG_IMAGES,
                 all_template_matches=candidates,  # Show ALL boxes with template names
             )
+            self._consecutive_cycle_errors = 0
 
             if not candidates:
                 # 空闲检测：递增连续未识别次数
@@ -367,7 +363,11 @@ class AutoSellLoop:
                 )
                 # 可中断的睡眠
                 elapsed = 0.0
-                while elapsed < self.state.idle_delay and not self.state.menu_visible:
+                while (
+                    elapsed < self.state.idle_delay
+                    and not self.state.menu_visible
+                    and not self.status.stop_requested
+                ):
                     time.sleep(0.1)
                     elapsed += 0.1
                 return
@@ -393,7 +393,13 @@ class AutoSellLoop:
             )
 
             # 激活游戏窗口（确保点击生效）
-            focus_window("三角洲行动")
+            if not focus_window("三角洲行动"):
+                logger.log_only("[操作]", "游戏窗口激活失败，跳过本轮批处理")
+                self.status.status = "游戏窗口未激活"
+                self.status.add_event("游戏窗口未激活，已跳过点击")
+                render_panel(self.status)
+                time.sleep(LOOP_DELAY)
+                return
 
             for idx, group in enumerate(groups, 1):
                 # 检查停止请求
@@ -432,13 +438,67 @@ class AutoSellLoop:
 
             self.status.total_sold = self.state.total_sold
             self.status.status = "批量完成"
+            self._consecutive_cycle_errors = 0
             render_panel(self.status)
 
             # 循环间隔
             time.sleep(LOOP_DELAY)
         except Exception as e:
-            logger.error(f"[轮次 {round_n}] 循环异常: {type(e).__name__}: {e}")
+            self._consecutive_cycle_errors += 1
+            logger.error(
+                f"[轮次 {round_n}] 循环异常: {type(e).__name__}: {e}",
+                include_traceback=True,
+            )
+            self.status.status = "循环异常"
+            self.status.add_event(f"循环异常 {self._consecutive_cycle_errors}/3")
+            render_panel(self.status)
+            if self._consecutive_cycle_errors >= 3:
+                self.status.status = "连续异常停止"
+                self.status.stop_requested = True
+                self.state.is_running = False
+                self.status.add_event("连续异常，已停止")
+                render_panel(self.status)
+                return
             time.sleep(LOOP_DELAY)
+
+    def _validate_runtime_environment(self) -> bool:
+        """校验当前屏幕尺寸是否能覆盖固定坐标区域。"""
+        logger = get_logger()
+        try:
+            screen_w, screen_h = self.capture.get_screen_size()
+        except Exception as e:
+            logger.error(f"读取屏幕尺寸失败: {type(e).__name__}: {e}", include_traceback=True)
+            self.status.status = "屏幕校验失败"
+            self.status.stop_requested = True
+            self.status.add_event("读取屏幕尺寸失败")
+            render_panel(self.status)
+            self.state.is_running = False
+            return False
+
+        if not isinstance(screen_w, int) or not isinstance(screen_h, int):
+            logger.error(f"屏幕尺寸异常: {screen_w!r}x{screen_h!r}")
+            self.status.status = "屏幕校验失败"
+            self.status.stop_requested = True
+            self.status.add_event("屏幕尺寸读取异常")
+            render_panel(self.status)
+            self.state.is_running = False
+            return False
+
+        right = BACKPACK_LEFT + BACKPACK_WIDTH
+        bottom = BACKPACK_TOP + BACKPACK_HEIGHT
+        if BACKPACK_LEFT < 0 or BACKPACK_TOP < 0 or right > screen_w or bottom > screen_h:
+            logger.error(
+                "固定坐标超出屏幕范围: "
+                f"screen={screen_w}x{screen_h}, backpack=({BACKPACK_LEFT},{BACKPACK_TOP})-({right},{bottom})"
+            )
+            self.status.status = "坐标超出屏幕"
+            self.status.stop_requested = True
+            self.status.add_event("固定坐标超出屏幕范围")
+            render_panel(self.status)
+            self.state.is_running = False
+            return False
+
+        return True
 
     def _sell_item_with_log(self, record: ItemRecord) -> bool:
         """卖出单个物品（9步流程）。
@@ -756,10 +816,10 @@ class AutoSellLoop:
         overflow_bottom = max(0, half_h - bottom_space)
 
         # 实际裁剪区域：溢出叠加到对侧，保持总宽度不变
-        x1 = anchor_x - half_w - overflow_right
-        x2 = anchor_x + half_w + overflow_left
-        y1 = anchor_y - half_h - overflow_bottom
-        y2 = anchor_y + half_h + overflow_top
+        x1 = max(0, anchor_x - half_w - overflow_right)
+        x2 = min(w, anchor_x + half_w + overflow_left)
+        y1 = max(0, anchor_y - half_h - overflow_bottom)
+        y2 = min(h, anchor_y + half_h + overflow_top)
 
         # 裁剪局部区域（始终为 300×300，溢出叠加到对侧）
         region = image[y1:y2, x1:x2]

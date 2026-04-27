@@ -5,9 +5,10 @@ from pathlib import Path
 from typing import Optional
 
 # 项目根目录
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(__file__).resolve().parent
 
 TEMPLATES_DIR = BASE_DIR / "templates"
+UI_TEMPLATES_DIR = TEMPLATES_DIR / "ui"
 DEBUG_DIR = BASE_DIR / "debug"
 
 
@@ -16,7 +17,7 @@ TEMPLATE_MATCH_THRESHOLD = 0.70
 COLOR_MATCH_THRESHOLD = 0.85
 
 # YOLO
-YOLO_MODEL_PATH: str = "models/item_detector.pt"
+YOLO_MODEL_PATH: str = str(BASE_DIR / "models" / "item_detector.pt")
 YOLO_CONFIDENCE_THRESHOLD: float = 0.90
 YOLO_IOU_THRESHOLD: float = 0.45
 
@@ -24,8 +25,6 @@ YOLO_IOU_THRESHOLD: float = 0.45
 HYBRID_MAX_WORKERS: int = 8
 
 # 候选整理
-ICON_FILTER_THRESHOLD: float = 0.8
-ICON_TEMPLATE_PATH: str = ""  # 不能卖图标模板，为空则跳过
 DEDUP_DISTANCE_PX: int = 20
 
 # 调试截图

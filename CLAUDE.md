@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-**三角洲行动装备自动出售工具** — 通过屏幕视觉识别（YOLO 粗识别 + 模板匹配精识别 + OCR 价格读取）在游戏背包中自动检测并出售物品。
+**三角洲行动装备自动出售工具** — 通过屏幕视觉识别（YOLO 粗识别 + 模板匹配精识别）在游戏背包中自动检测并出售物品。
 
 - 平台：Windows；分辨率：1920×1080（坐标硬编码）
 - Python 3.12+
@@ -41,8 +41,8 @@ main.py — F8热键 → loop.start()
     │       ├── HybridPipeline — YOLO粗筛 → ROI提取 → 模板精识别 → 合并去重
     │       │       ├── YoloItemDetector (需 models/item_detector.pt)
     │       │       ├── TemplateRecognizer (GPU PyTorch conv2d / CPU ThreadPoolExecutor)
-    │       │       └── ItemCandidatePipeline (坐标换算 → icon filter → 去重 → 排序)
-    │       ├── PriceReader (EasyOCR 读价格柱 P1/P2)
+    │       │       └── ItemCandidatePipeline (坐标换算 → 去重 → 排序)
+    │       ├── PriceReader (EasyOCR 读价格柱 P1/P2，当前主流程未自动调用)
     │       ├── MouseController (pydirectinput 点击/移动)
     │       └── KeyboardController (退格键)
     └── keyboard.add_hotkey("f8") — 全局热键（仅设标志位，主线程处理）
@@ -52,12 +52,12 @@ main.py — F8热键 → loop.start()
 1. `ScreenCapture.capture_region()` 截图背包区域（1200,100 → 1850,1000）
 2. HybridPipeline: YOLO 检测 → ROI 裁剪（+10px padding）→ 多线程模板匹配 → 去重排序
 3. `_sell_item_with_log()` 4步卖出流程（点击物品 → 设置数量×3 → 设置价格(退格+坐标点击) → 上架确认）
-4. `RoundSummary` 本轮统计摘要（回填 verification_passed/action_taken）
+4. `RoundSummary` 本轮统计摘要（各阶段数量 + 第一名 + YOLO 原始框）
 
 **三段数据类型：**
 - `RawItemDetection` — 第一段输出，检测器的原始结果（ROI 局部坐标 + 置信度 + 来源）
-- `ItemCandidate` — 第二段输出，pipeline 整理后（全屏坐标 + 排序 + 去重 + icon filter 结果，含模板名）
-- `RoundSummary` — 每轮统计摘要（各阶段数量 + 第一名 + 第三段回填的验证/操作状态 + raw_yolo_detections）
+- `ItemCandidate` — 第二段输出，pipeline 整理后（全屏坐标 + 排序 + 去重，含模板名）
+- `RoundSummary` — 每轮统计摘要（各阶段数量 + 第一名 + raw_yolo_detections）
 
 **4步卖出流程：** 点击物品 → 设置数量×3 → 设置价格(退格+坐标点击) → 点击上架确认
 
@@ -74,7 +74,7 @@ main.py — F8热键 → loop.start()
 | `vision/capture.py` | mss 截图封装（线程安全，每线程独立 mss 实例） |
 | `vision/price_reader.py` | EasyOCR 价格柱识别，延迟初始化单例 |
 | `vision/yolo_item_detector.py` | YOLO 推理封装（需 models/item_detector.pt） |
-| `core/loop.py` | AutoSellLoop — 主循环 + 卖出流程 + MSE 验证 + 控制台置顶 |
+| `core/loop.py` | AutoSellLoop — 主循环 + 卖出流程 + 背包锚点校验 + 控制台置顶 |
 | `control/mouse.py` | pydirectinput 鼠标控制 + focus_window() 游戏窗口激活 |
 | `control/keyboard.py` | 键盘控制（pydirectinput press） |
 | `utils/logger.py` | 双通道日志（文件始终写入，控制台仅 DEBUG_MODE 时输出） |
@@ -127,16 +127,14 @@ main.py — F8热键 → loop.start()
 
 ### 控制台窗口置顶
 - `main.py` 启动时调用 `SetWindowPos(HWND_TOPMOST)` 置顶控制台
-- `_sell_item_with_log()` 每次卖出前调用 `focus_window("三角洲行动")` 激活游戏（保证点击有效）
+- `_run_one_cycle_new()` 批处理前调用 `focus_window("三角洲行动")` 激活游戏；激活失败会跳过本轮点击
 - `run()` 每轮循环末尾调用 `_keep_console_topmost()` 恢复控制台置顶
 
 ### 其他
 - 模板文件支持中文文件名，放在 `templates/` 目录（963 个物品模板）
-- `config.py` 的 `__init__` 会打印阈值配置到 stderr
 - `vision/recognizer.py` 启动时加载所有模板到内存，按 (h, w) 分组加速匹配
-- `_verify_candidate` MSE 验证，高于 MSE 阈值视为物品已变化
 - `_is_empty_slot` 通过 3x3 共 9 像素判断格子 RGB(26,31,34) 是否一致，用于跳过空白格
-- `_has_green_button` HSV 空间检测绿色比例 > 5%，用于验证上架按钮是否出现
+- `_has_green_button` HSV 空间检测绿色比例 > 5%，保留给 UI 验证逻辑使用
 - `save_debug_frame` 每轮可生成 3 张标注截图（00_original / 01_yolo / 02_pipeline），按 round_NNNN/ 分目录
 - `RoundSummary.raw_yolo_detections` 存储 YOLO 原始检测框列表，供调试绘图使用
 

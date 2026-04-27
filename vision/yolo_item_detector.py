@@ -1,6 +1,7 @@
 """YOLO 物品检测器"""
 
 import cv2
+from pathlib import Path
 from typing import List
 
 try:
@@ -34,10 +35,13 @@ class YoloItemDetector:
         """
         if YOLO is None:
             raise ImportError("ultralytics 未安装，请运行: pip install ultralytics")
+        model_file = Path(model_path)
+        if not model_file.exists():
+            raise FileNotFoundError(f"YOLO 模型不存在: {model_file}")
 
         self.confidence_threshold = confidence_threshold
         self.iou_threshold = iou_threshold
-        self._model = YOLO(model_path)
+        self._model = YOLO(str(model_file))
 
     def detect(self, image) -> List[RawItemDetection]:
         """检测物品

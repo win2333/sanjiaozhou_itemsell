@@ -9,6 +9,7 @@
 
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 import cv2
@@ -27,6 +28,14 @@ from config import TEMPLATE_MATCH_THRESHOLD, COLOR_MATCH_THRESHOLD
 
 # ROI 提取时扩展边框像素数
 _ROI_PADDING: int = 10
+
+
+@dataclass
+class _RoiWorkItem:
+    image: np.ndarray
+    detection: RawItemDetection
+    x_offset: int
+    y_offset: int
 
 
 class HybridPipeline:
@@ -147,7 +156,7 @@ class HybridPipeline:
 
         summary = RoundSummary(
             raw_count=len(yolo_detections),
-            filtered_count=0,  # Hybrid模式暂不实现icon filter
+            filtered_count=0,
             dedup_count=len(eliminated),
             template_match_count=self._template_match_count,
             final_count=len(final_candidates),
@@ -161,7 +170,7 @@ class HybridPipeline:
         self,
         image: np.ndarray,
         detections: List[RawItemDetection],
-    ) -> List[Tuple[np.ndarray, RawItemDetection]]:
+    ) -> List[_RoiWorkItem]:
         """从全图中提取ROI区域
 
         Args:
@@ -169,9 +178,9 @@ class HybridPipeline:
             detections: YOLO检测结果
 
         Returns:
-            List[(ROI图像, detection元数据)]
+            ROI 工作项列表，包含实际裁剪偏移和 detection 元数据。
         """
-        rois = []
+        rois: List[_RoiWorkItem] = []
         for det in detections:
             x1 = max(0, det.x)
             y1 = max(0, det.y)
@@ -185,13 +194,13 @@ class HybridPipeline:
             y2_pad = min(image.shape[0], y2 + _ROI_PADDING)
 
             roi = image[y1_pad:y2_pad, x1_pad:x2_pad]
-            rois.append((roi, det))
+            rois.append(_RoiWorkItem(roi, det, x1_pad, y1_pad))
 
         return rois
 
     def _parallel_template_match(
         self,
-        rois: List[Tuple[np.ndarray, RawItemDetection]],
+        rois: List[_RoiWorkItem],
         detections: List[RawItemDetection],
         roi_origin_x: int = 0,
         roi_origin_y: int = 0,
@@ -199,7 +208,7 @@ class HybridPipeline:
         """多线程模板匹配
 
         Args:
-            rois: ROI图像列表
+            rois: ROI 工作项列表
             detections: 对应的检测元数据
             roi_origin_x: ROI图像左上角在屏幕上的x坐标
             roi_origin_y: ROI图像左上角在屏幕上的y坐标
@@ -214,17 +223,19 @@ class HybridPipeline:
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = {}
-            for i, (roi, det) in enumerate(rois):
+            for i, item in enumerate(rois):
                 future = executor.submit(
                     self._match_single_roi,
-                    roi,
-                    det,
+                    item.image,
+                    item.detection,
+                    item.x_offset,
+                    item.y_offset,
                     i,
                     len(rois),
                     roi_origin_x,
                     roi_origin_y,
                 )
-                futures[future] = (det, i)
+                futures[future] = (item.detection, i)
 
             for future in as_completed(futures):
                 det, idx = futures[future]
@@ -242,6 +253,8 @@ class HybridPipeline:
         self,
         roi: np.ndarray,
         detection: RawItemDetection,
+        roi_x_offset: int,
+        roi_y_offset: int,
         index: int,
         total: int,
         roi_origin_x: int = 0,
@@ -252,6 +265,8 @@ class HybridPipeline:
         Args:
             roi: ROI图像
             detection: YOLO检测元数据
+            roi_x_offset: 当前 ROI 图块在 full_screen 中的实际 x 偏移
+            roi_y_offset: 当前 ROI 图块在 full_screen 中的实际 y 偏移
             index: 当前索引
             total: 总数
             roi_origin_x: ROI图像左上角在屏幕上的x坐标
@@ -350,10 +365,9 @@ class HybridPipeline:
         # 构建ItemCandidate，使用屏幕绝对坐标
         # detection.x/y 是 YOLO 在 full_screen 中的坐标（full_screen 左上角为 roi_origin）
         # best_match.x/y 是模板在 roi（图块）中的坐标
-        # 图块左上角在 full_screen 中的位置 = detection.x - _ROI_PADDING
-        # 最终屏幕坐标 = roi_origin + detection.x - _ROI_PADDING + best_match.x
-        screen_x = roi_origin_x + detection.x - _ROI_PADDING + best_match["x"]
-        screen_y = roi_origin_y + detection.y - _ROI_PADDING + best_match["y"]
+        # 图块左上角在 full_screen 中的位置需要使用实际 clamp 后的偏移。
+        screen_x = roi_origin_x + roi_x_offset + best_match["x"]
+        screen_y = roi_origin_y + roi_y_offset + best_match["y"]
         click_x = screen_x + best_match["w"] // 2
         click_y = screen_y + best_match["h"] // 2
 

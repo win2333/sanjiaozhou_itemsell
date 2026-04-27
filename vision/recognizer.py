@@ -108,6 +108,10 @@ class TemplateRecognizer:
         loaded = []
         import os
 
+        if not self.templates_dir.exists():
+            get_logger().log_only("[模板]", f"模板目录不存在: {self.templates_dir}")
+            return loaded
+
         for filename in os.listdir(self.templates_dir):
             if filename.lower().endswith(".png"):
                 template_path = os.path.join(self.templates_dir, filename)

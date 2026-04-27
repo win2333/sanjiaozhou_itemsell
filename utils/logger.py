@@ -2,6 +2,7 @@
 
 import os
 import time
+import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -116,9 +117,13 @@ class Logger:
         if DEBUG_MODE:
             print(f"[{timestamp}] {message}")
 
-    def error(self, message: str) -> None:
+    def error(self, message: str, include_traceback: bool = False) -> None:
         """错误"""
         self.log("[错误]", message)
+        if include_traceback:
+            tb = traceback.format_exc()
+            if tb and tb.strip() != "NoneType: None":
+                self.log("[错误]", tb.rstrip())
 
     def print_only(self, message: str) -> None:
         """输出到控制台，并写入文件（DEBUG_MODE下控制台输出，正式模式只写文件）"""

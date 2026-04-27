@@ -11,11 +11,8 @@ if %errorlevel% neq 0 (
     exit /b
 )
 
-set PYTHON_EXE=C:\Users\Eureka\AppData\Local\Programs\Python\Python312\python.exe
-
-if exist "%PYTHON_EXE%" (
-    "%PYTHON_EXE%" main.py
-) else (
+py -3.12 main.py
+if %errorlevel% neq 0 (
     python main.py
 )
 

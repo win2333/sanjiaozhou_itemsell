@@ -35,7 +35,7 @@ class ItemCandidate:
     click_y: int  # 建议点击点 y（框中心）
     confidence: float  # 置信度
     rank: int  # 本轮排名（1-based）
-    passed_icon_filter: bool  # 是否通过 icon filter
+    passed_icon_filter: bool  # 兼容字段，当前固定为 True
     keep_reason: str  # 保留原因，如 "normal"
     template_name: Optional[str] = None  # 物品模板名称
 
@@ -46,7 +46,7 @@ class EliminatedCandidate:
 
     screen_x: int  # 全屏左上角 x
     screen_y: int  # 全屏左上角 y
-    reason: str  # "icon_filter" | "dedup" | "other"
+    reason: str  # "dedup" | "other"
     template_name: Optional[str] = None  # 匹配的模板名称
 
 
@@ -55,7 +55,7 @@ class RoundSummary:
     """单轮处理摘要（第三段回填 verification_passed 和 action_taken）"""
 
     raw_count: int  # 原始检测框数量
-    filtered_count: int  # icon filter 淘汰数量
+    filtered_count: int  # 预留过滤淘汰数量，当前主流程为 0
     dedup_count: int  # 去重淘汰数量
     final_count: int = 0  # 最终候选数量
     template_match_count: int = 0  # 模板匹配成功数量（在去重之前）

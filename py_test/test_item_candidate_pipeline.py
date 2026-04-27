@@ -4,7 +4,6 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-import numpy as np
 import pytest
 
 from vision.item_types import RawItemDetection
@@ -18,7 +17,6 @@ def make_det(x: int, y: int, w: int = 50, h: int = 50, conf: float = 0.9, templa
 class TestItemCandidatePipeline:
     def setup_method(self):
         self.pipeline = ItemCandidatePipeline(
-            icon_filter_threshold=0.8,
             dedup_distance_px=20,
         )
 
@@ -33,30 +31,6 @@ class TestItemCandidatePipeline:
         assert c.screen_y == 220   # 20 + 200
         assert c.click_x == 130    # 110 + 40//2
         assert c.click_y == 240    # 220 + 40//2
-
-    def test_icon_filter_removes_no_sell(self):
-        """icon filter 应该淘汰含 icon 的候选"""
-        # 构造一个小的 icon 模板（纯色块）
-        icon_tmpl = np.full((10, 10, 3), 200, dtype=np.uint8)
-        # 构造 roi_img，在 (0,0) 放上匹配该 icon 的区域
-        roi_img = np.zeros((100, 100, 3), dtype=np.uint8)
-        roi_img[0:10, 0:10] = 200  # 完美匹配
-
-        pipeline = ItemCandidatePipeline(
-            icon_filter_threshold=0.9,
-            dedup_distance_px=20,
-            icon_templates=[icon_tmpl],
-        )
-
-        dets = [make_det(0, 0)]
-        candidates, eliminated, summary = pipeline.process(
-            dets, roi_origin_x=0, roi_origin_y=0, roi_img=roi_img
-        )
-
-        # icon 覆盖整个图像，所有候选被过滤
-        assert summary.filtered_count == 1
-        assert len(eliminated) == 1
-        assert eliminated[0].reason == "icon_filter"
 
     def test_dedup_keeps_highest_confidence(self):
         """两个距离很近的框，保留置信度高的"""

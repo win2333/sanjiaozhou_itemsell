@@ -49,9 +49,17 @@ class PriceReader:
 
         # 价格区域（5个价格显示的位置）
         # 坐标：左上 (440, 734)，右下 (1050, 770)
+        if image is None or image.shape[0] < 770 or image.shape[1] < 1050:
+            get_logger().log_only("[PriceReader]", "截图尺寸不足，无法裁剪价格区域")
+            return []
+
         price_region = image[734:770, 440:1050]
+        if price_region.size == 0:
+            get_logger().log_only("[PriceReader]", "价格区域为空")
+            return []
 
         # 保存原始区域用于调试
+        DEBUG_DIR.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(DEBUG_DIR / "debug_price_region.png"), price_region)
 
         # 图片预处理：转灰度
@@ -207,4 +215,3 @@ def test_price_reader():
 
 if __name__ == "__main__":
     test_price_reader()
-

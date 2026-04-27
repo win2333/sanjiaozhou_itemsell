@@ -13,6 +13,7 @@ from core.loop import AutoSellLoop
 from config import (
     TEMPLATE_MATCH_THRESHOLD,
     TEMPLATES_DIR,
+    UI_TEMPLATES_DIR,
     USE_GPU_TEMPLATE_RECOGNITION,
     USE_FIXED_COORDINATES,
 )
@@ -31,7 +32,9 @@ def init_components() -> AutoSellLoop:
         print(f"请将物品截图放到: {TEMPLATES_DIR}")
 
     # UI模板识别器（固定坐标模式下不加载模板）
-    ui_recognizer = TemplateRecognizer("", threshold=0.75, use_gpu=USE_GPU_TEMPLATE_RECOGNITION)
+    ui_recognizer = TemplateRecognizer(
+        str(UI_TEMPLATES_DIR), threshold=0.75, use_gpu=USE_GPU_TEMPLATE_RECOGNITION
+    )
     if not USE_FIXED_COORDINATES:
         ui_recognizer.load_templates()
 
@@ -60,8 +63,6 @@ def main():
         if not loop.status.stop_requested:
             loop.status.stop_requested = True
             loop.status.status = "停止请求中"
-            from utils.status_panel import render
-            render(loop.status)
 
     # 注册 F8 热键（全局生效，游戏前台也能用）
     keyboard.add_hotkey("f8", on_f8)
