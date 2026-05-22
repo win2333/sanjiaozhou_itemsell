@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "DetlaForceGame",
+  "project_id": "bf4b53b5-64b1-47ed-badd-99f28027d18e"
+}
