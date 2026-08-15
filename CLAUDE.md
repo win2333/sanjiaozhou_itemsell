@@ -42,7 +42,7 @@ main.py — F8热键 → loop.start()
     │       │       ├── YoloItemDetector (需 models/item_detector.pt)
     │       │       ├── TemplateRecognizer (GPU PyTorch conv2d / CPU ThreadPoolExecutor)
     │       │       └── ItemCandidatePipeline (坐标换算 → 去重 → 排序)
-    │       ├── PriceReader (EasyOCR 读价格柱 P1/P2，当前主流程未自动调用)
+    │       ├── PriceReader (EasyOCR 读价格柱 P1/P2，上架界面动态定价，失败回退固定坐标)
     │       ├── MouseController (pydirectinput 点击/移动)
     │       └── KeyboardController (退格键)
     └── keyboard.add_hotkey("f8") — 全局热键（仅设标志位，主线程处理）
@@ -98,6 +98,8 @@ main.py — F8热键 → loop.start()
 | `USE_FIXED_COORDINATES` | `True` | 跳过 UI 识别，用预校准坐标 |
 | `USE_GPU_TEMPLATE_RECOGNITION` | `False` | GPU 加速（需 NVIDIA CUDA + torch） |
 | `DEBUG_MODE` | `False` | `True`=详细日志到控制台+文件；`False`=仅写文件，控制台只显示摘要 |
+| `VERIFY_SELL_RESULT` | `True` | 确认点击后验证格子清空+背包UI，失败不计入卖出数 |
+| `USE_OCR_PRICE` | `True` | 上架时 OCR 读价格柱动态定价，失败回退固定坐标点击 |
 | `SAVE_DEBUG_IMAGES` | `False` | debug 图片输出开关（生成到 debug/round_NNNN/） |
 | `LOOP_DELAY` | 0.1 | 主循环间隔秒数 |
 | `HYBRID_MAX_WORKERS` | 8 | Hybrid 模式模板匹配线程数 |
@@ -192,3 +194,32 @@ bd close <id>         # Complete work
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
 <!-- END BEADS INTEGRATION -->
+
+
+<!-- project-agent-tools:start -->
+## 本项目 Agent 工具链规则
+
+- 本项目查代码优先使用 Semble 做语义定位。
+- 不要先全仓库 grep / glob / Read；先返回最少需要读取的文件列表。
+- logs、outputs、ecordings、memory、env、.venv、
+ode_modules、dist、uild、__pycache__ 默认不读。
+- 任务、依赖和进度用 Beads 管理；本项目的 Beads 数据在 .beads/。
+- git、test、pytest、npm、grep、find、diff、日志输出优先用 RTK 压缩；RTK 不会自动压缩内置 Read / Grep / Glob。
+- 稳定结论写入全局 llmwiki 对应项目页：$wikiPage。
+- llmwiki 不复制大段源码，只记录稳定结论、踩坑、配置和架构决策。
+- 修改代码前先说明涉及文件和影响范围。
+<!-- project-agent-tools:end -->
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked with beads (`bd`): a local Dolt DB synced to the git remote via `bd dolt push`/`bd dolt pull`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles use their default label strings (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.

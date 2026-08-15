@@ -8,7 +8,7 @@ from typing import List, Optional, Tuple
 from dataclasses import dataclass
 
 from vision.capture import ScreenCapture
-from vision.recognizer import TemplateRecognizer, MatchResult
+from vision.recognizer import TemplateRecognizer
 from vision.price_reader import PriceReader
 from control.mouse import MouseController, focus_window
 from control.keyboard import KeyboardController
@@ -35,6 +35,9 @@ from config import (
     BACKPACK_TOP,
     BACKPACK_WIDTH,
     BACKPACK_HEIGHT,
+    VERIFY_SELL_RESULT,
+    SELL_VERIFY_WAIT_S,
+    USE_OCR_PRICE,
 )
 from vision.item_types import ItemCandidate, RoundSummary
 from utils.debug_visualizer import save_debug_frame
@@ -49,7 +52,6 @@ class SellState:
     is_running: bool  # 是否正在运行
     consecutive_empty: int  # 连续未识别次数（用于空闲检测）
     idle_delay: float  # 当前空闲延迟时间（秒）
-    menu_visible: bool = False  # 菜单是否正在显示（显示时停止控制台输出）
 
     def __init__(self):
         self.total_sold = 0
@@ -98,7 +100,6 @@ class AutoSellLoop:
     def __init__(
         self,
         item_recognizer: TemplateRecognizer,
-        ui_recognizer: TemplateRecognizer,
         capture: ScreenCapture,
         mouse: MouseController,
         keyboard: KeyboardController,
@@ -108,14 +109,12 @@ class AutoSellLoop:
 
         Args:
             item_recognizer: 物品识别器
-            ui_recognizer: UI元素识别器
             capture: 屏幕截图器
             mouse: 鼠标控制器
             keyboard: 键盘控制器
             price_reader: 价格识别器（可选）
         """
         self.item_recognizer = item_recognizer
-        self.ui_recognizer = ui_recognizer
         self.capture = capture
         self.mouse = mouse
         self.keyboard = keyboard
@@ -184,14 +183,8 @@ class AutoSellLoop:
         Returns:
             操作指令: "menu", "exit"
         """
-        from utils.logger import close_logger, get_logger
-
-        logger = get_logger()
-        logger.stats(f"程序停止，共卖出 {self.state.total_sold} 个物品")
-        close_logger()
         self.state.is_running = False
-        self.state.menu_visible = True
-        return "menu"
+        return "exit"
 
     def get_stats(self) -> dict:
         """获取统计信息"""
@@ -239,9 +232,6 @@ class AutoSellLoop:
         # 停止请求：优雅退出，等当前操作完成
         if self.status.stop_requested:
             self.state.is_running = False
-            return
-        # 菜单已显示时，直接跳过本轮所有输出
-        if self.state.menu_visible:
             return
         logger = get_logger()
         self._round_counter += 1
@@ -363,11 +353,7 @@ class AutoSellLoop:
                 )
                 # 可中断的睡眠
                 elapsed = 0.0
-                while (
-                    elapsed < self.state.idle_delay
-                    and not self.state.menu_visible
-                    and not self.status.stop_requested
-                ):
+                while elapsed < self.state.idle_delay and not self.status.stop_requested:
                     time.sleep(0.1)
                     elapsed += 0.1
                 return
@@ -403,7 +389,7 @@ class AutoSellLoop:
 
             for idx, group in enumerate(groups, 1):
                 # 检查停止请求
-                if self.status.stop_requested or self.state.menu_visible:
+                if self.status.stop_requested:
                     logger.log_only("[操作]", "停止请求，中断当前批处理")
                     self.status.add_event("停止请求，中断批处理")
                     break
@@ -569,8 +555,23 @@ class AutoSellLoop:
             time.sleep(0.1)
             self.keyboard.press("backspace")
             time.sleep(0.1)
-            self.mouse.click(PRICE_DIRECT_CLICK_X, price_input_y)
-            logger.step(f"[{item_name}] [3/4] 输入价格: 退格后点击{PRICE_DIRECT_CLICK_X}坐标")
+
+            if USE_OCR_PRICE:
+                ocr_price = self._read_sell_price()
+            else:
+                ocr_price = None
+
+            if ocr_price is not None:
+                for digit in str(ocr_price):
+                    self.keyboard.press(digit)
+                logger.step(
+                    f"[{item_name}] [3/4] OCR定价: P1/P2 计算后输入 {ocr_price}"
+                )
+            else:
+                self.mouse.click(PRICE_DIRECT_CLICK_X, price_input_y)
+                logger.step(
+                    f"[{item_name}] [3/4] 输入价格: 退格后点击{PRICE_DIRECT_CLICK_X}坐标"
+                )
             time.sleep(random.uniform(0.1, 0.2))
 
             # ========== 步骤 4: 点击 upload2 确认 ==========
@@ -578,6 +579,19 @@ class AutoSellLoop:
             render_panel(self.status)
             self.mouse.click(upload2_x, upload2_y)
             logger.step(f"[{item_name}] [4/4] 点击 upload2 确认 ({upload2_x}, {upload2_y})")
+
+            # ========== 结果验证：格子变空 + 背包仍在 ==========
+            if VERIFY_SELL_RESULT:
+                time.sleep(SELL_VERIFY_WAIT_S)
+                if not self._is_backpack_visible():
+                    logger.warning(f"[{item_name}] 验证失败: 背包UI不在屏幕上")
+                    self.status.add_event(f"验证失败(背包关闭) {item_name}")
+                    return False
+                if not self._is_empty_slot(x, y):
+                    logger.warning(f"[{item_name}] 验证失败: 格子未清空，疑似未上架成功")
+                    self.status.add_event(f"验证失败(格子未空) {item_name}")
+                    return False
+                logger.log_only("[验证]", f"[{item_name}] 格子已清空，上架成功")
 
             # 成功完成
             sell_time = time.time() - sell_start
@@ -593,6 +607,39 @@ class AutoSellLoop:
             self.status.current_item = ""
             render_panel(self.status)
             return False
+
+    def _read_sell_price(self) -> Optional[int]:
+        """OCR 读上架界面的价格柱并计算售价
+
+        价格柱坐标是全屏坐标，需截全屏。任何失败返回 None，
+        由调用方回退到固定坐标点击。
+
+        Returns:
+            计算出的售价，失败返回 None
+        """
+        try:
+            from config import calculate_price
+
+            image = self.capture.capture_full_screen()
+            if image is None:
+                return None
+            p1, p2 = self.price_reader.get_p1_p2(image)
+            if p1 is None:
+                logger = get_logger()
+                logger.log_only("[价格]", "OCR 未识别到价格柱，回退固定坐标")
+                return None
+            price = calculate_price(p1, p2)
+            if price < 10:
+                # 异常低价(可能 P1 误识别为小值)，不采纳
+                logger = get_logger()
+                logger.warning(f"[价格] OCR 计算价异常({price}), P1={p1}, P2={p2}，回退固定坐标")
+                return None
+            logger = get_logger()
+            logger.log_only("[价格]", f"P1={p1}, P2={p2} -> 售价 {price}")
+            return price
+        except Exception as e:
+            get_logger().warning(f"[价格] OCR 定价失败: {type(e).__name__}: {e}")
+            return None
 
     def _update_backpack_ref(self) -> None:
         """从参考区域 (1180,150)-(1200,170) 采集 10 个锚点像素
@@ -775,110 +822,3 @@ class AutoSellLoop:
         width = x2 - x1
         height = y2 - y1
         return self.capture.capture_region(x1, y1, width, height)
-
-    def _find_ui_element(
-        self, element_name: str, anchor_x: int, anchor_y: int
-    ) -> Optional[MatchResult]:
-        REGION_HALF_WIDTH = 150
-        REGION_HALF_HEIGHT = 150
-
-        # 全屏截图
-        image = self.capture.capture_full_screen()
-        if image is None:
-            return None
-
-        # 检查区域尺寸是否比所有模板都大
-        # 如果区域太小（模板比区域还大），cv2.matchTemplate 会崩溃，直接回退到全屏匹配
-        min_template_w = 0
-        min_template_h = 0
-        for template in self.ui_recognizer.templates.values():
-            h, w = template.shape[:2]
-            if h > min_template_h:
-                min_template_h = h
-            if w > min_template_w:
-                min_template_w = w
-
-        # 以鼠标为中心，左右上下各 150px
-        h, w = image.shape[:2]
-        half_w = REGION_HALF_WIDTH
-        half_h = REGION_HALF_HEIGHT
-
-        # 计算各方向到屏幕边缘的距离
-        left_space = anchor_x
-        right_space = w - anchor_x
-        top_space = anchor_y
-        bottom_space = h - anchor_y
-
-        # 溢出量：超过屏幕边界的部分
-        overflow_left = max(0, half_w - left_space)
-        overflow_right = max(0, half_w - right_space)
-        overflow_top = max(0, half_h - top_space)
-        overflow_bottom = max(0, half_h - bottom_space)
-
-        # 实际裁剪区域：溢出叠加到对侧，保持总宽度不变
-        x1 = max(0, anchor_x - half_w - overflow_right)
-        x2 = min(w, anchor_x + half_w + overflow_left)
-        y1 = max(0, anchor_y - half_h - overflow_bottom)
-        y2 = min(h, anchor_y + half_h + overflow_top)
-
-        # 裁剪局部区域（始终为 300×300，溢出叠加到对侧）
-        region = image[y1:y2, x1:x2]
-
-        # 如果区域比最小模板还小，回退到全屏截图
-        region_h, region_w = region.shape[:2]
-        if min_template_h > 0 and min_template_w > 0:
-            if region_h < min_template_h or region_w < min_template_w:
-                results = self.ui_recognizer.recognize(image, draw_debug=False)
-                for result in results:
-                    if result.template_name == element_name:
-                        return result
-                return None
-
-        # DEBUG: 保存局部区域截图供查看
-        if SAVE_DEBUG_IMAGES:
-            debug_sell_region = DEBUG_DIR / "debug_sell1_region.png"
-            cv2.imwrite(str(debug_sell_region), region)
-
-        # 在局部区域中匹配（阈值已降至 0.75）
-        results = self.ui_recognizer.recognize(region, draw_debug=False)
-
-        # 按 element_name 过滤，并将结果坐标转换为屏幕绝对坐标
-        for result in results:
-            if result.template_name == element_name:
-                result.center_x += x1
-                result.center_y += y1
-                result.x += x1
-                result.y += y1
-                return result
-        return None
-
-    def _capture_region(
-        self, center_x: int, center_y: int, width: int, height: int
-    ) -> Optional[np.ndarray]:
-        """截取指定区域
-
-        Args:
-            center_x: 中心 x 坐标
-            center_y: 中心 y 坐标
-            width: 区域宽度
-            height: 区域高度
-
-        Returns:
-            区域截图，失败返回 None
-        """
-        # 计算左上角坐标
-        x1 = center_x - width // 2
-        y1 = center_y - height // 2
-        x2 = x1 + width
-        y2 = y1 + height
-
-        # 全屏截图
-        image = self.capture.capture_full_screen()
-
-        # 检查边界
-        if x1 < 0 or y1 < 0 or x2 > image.shape[1] or y2 > image.shape[0]:
-            return None
-
-        # 裁剪区域
-        region = image[y1:y2, x1:x2]
-        return region

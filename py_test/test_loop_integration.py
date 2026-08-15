@@ -14,7 +14,6 @@ def _make_loop(run_mode: str = "observe"):
     from core.loop import AutoSellLoop
 
     item_rec = MagicMock()
-    ui_rec = MagicMock()
     capture = MagicMock()
     capture.capture_full_screen.return_value = np.zeros((1080, 1920, 3), dtype=np.uint8)
     mouse = MagicMock()
@@ -23,7 +22,6 @@ def _make_loop(run_mode: str = "observe"):
 
     loop = AutoSellLoop(
         item_recognizer=item_rec,
-        ui_recognizer=ui_rec,
         capture=capture,
         mouse=mouse,
         keyboard=keyboard,

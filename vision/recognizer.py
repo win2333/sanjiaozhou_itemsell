@@ -533,59 +533,6 @@ class TemplateRecognizer:
             except Exception:
                 pass
 
-    def recognize_as_raw_detections(
-        self, roi_img: np.ndarray
-    ) -> List["RawItemDetection"]:
-        """将模板匹配结果转换为 RawItemDetection 列表（ROI 局部坐标）
-
-        与 recognize() 不同，此方法不做任何坐标偏移，直接在传入图像上匹配，
-        返回 ROI 局部坐标，供 ItemCandidatePipeline 做坐标换算。
-
-        Args:
-            roi_img: ROI 局部截图（BGR 或 BGRA）
-
-        Returns:
-            RawItemDetection 列表，source="template"
-        """
-        from vision.item_types import RawItemDetection
-
-        # 统一转 BGR
-        work = roi_img
-        if len(work.shape) == 3 and work.shape[2] == 4:
-            work = cv2.cvtColor(work, cv2.COLOR_BGRA2BGR)
-
-        # 与 recognize() 保持一致：裁剪到右半边后匹配，完成后加回偏移量
-        cropped = False
-        if work.shape[1] > 1150:
-            work = work[:, 1150:]
-            cropped = True
-
-        if self.use_gpu:
-            match_results = self._recognize_gpu(work)
-        else:
-            match_results = self._recognize_cpu(work)
-
-        # 加回裁剪偏移量
-        if cropped:
-            for r in match_results:
-                r.x += 1150
-                r.center_x += 1150
-
-        raw: List[RawItemDetection] = []
-        for r in match_results:
-            raw.append(
-                RawItemDetection(
-                    x=r.x,
-                    y=r.y,
-                    w=r.width,
-                    h=r.height,
-                    confidence=r.confidence,
-                    source="template",
-                    template_name=r.template_name,
-                )
-            )
-        return raw
-
     def save_debug_image(self, image: np.ndarray, path: str) -> None:
         """保存调试图像
 

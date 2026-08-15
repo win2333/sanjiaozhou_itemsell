@@ -40,6 +40,14 @@ IDLE_DELAYS = [0.1, 0.5, 1.0, 3.0, 5.0, 10.0, 15.0]
 USE_FIXED_COORDINATES = True
 USE_GPU_TEMPLATE_RECOGNITION = False
 
+# 卖出结果验证：确认点击后检查格子是否变空 + 背包是否还在
+VERIFY_SELL_RESULT = True
+SELL_VERIFY_WAIT_S = 0.5  # 确认点击后等待界面响应的秒数
+
+# OCR 动态定价：上架界面读价格柱 P1/P2 -> calculate_price -> 键盘输入
+# 失败(OCR 不可用/读不到/算出异常价)自动回退到旧的固定坐标点击
+USE_OCR_PRICE = True
+
 # 固定坐标（1920×1080）
 BACKPACK_LEFT = 1200
 BACKPACK_TOP = 100

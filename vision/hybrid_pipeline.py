@@ -74,6 +74,7 @@ class HybridPipeline:
         self.max_workers = max_workers
         self.dedup_distance_px = dedup_distance_px
         self._template_match_count: int = 0
+        self._size_groups: Optional[dict] = None  # (h, w) -> [(name, template)]，延迟构建
 
     def process(
         self,
@@ -165,6 +166,24 @@ class HybridPipeline:
         )
 
         return final_candidates, eliminated, summary
+
+    def _get_size_groups(self) -> dict:
+        """按 (h, w) 把模板分组，供 ROI 匹配时整组跳过超大模板。
+
+        模板加载后构建一次。典型 ROI 约 79x81px，963 个模板中约 2/3
+        大于此尺寸，分组后这些模板不再进入逐模板循环。
+        """
+        if self._size_groups is None:
+            groups: dict = {}
+            for name, template in self.template.templates.items():
+                h, w = template.shape[:2]
+                groups.setdefault((h, w), []).append((name, template))
+            self._size_groups = groups
+            get_logger().log_only(
+                "[模板]",
+                f"按尺寸分组: {len(groups)} 个尺寸组, 共 {len(self.template.templates)} 个模板",
+            )
+        return self._size_groups
 
     def _extract_rois(
         self,
@@ -292,61 +311,60 @@ class HybridPipeline:
         # 直接在ROI上做模板匹配，跳过TemplateRecognizer的x>=1150裁剪逻辑
         # 只用匹配阈值过滤
 
-        for template_name, template in self.template.templates.items():
-            tmpl_h, tmpl_w = template.shape[:2]
-
-            # 跳过比ROI大的模板
+        for (tmpl_h, tmpl_w), fitting_templates in self._get_size_groups().items():
+            # 整组跳过比ROI大的模板
             if tmpl_h > roi_h or tmpl_w > roi_w:
                 continue
 
-            # 模板匹配
-            try:
-                result = cv2.matchTemplate(work_img, template, cv2.TM_CCOEFF_NORMED)
-                _, max_val, _, max_loc = cv2.minMaxLoc(result)
+            for template_name, template in fitting_templates:
+                # 模板匹配
+                try:
+                    result = cv2.matchTemplate(work_img, template, cv2.TM_CCOEFF_NORMED)
+                    _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
-                if max_val >= TEMPLATE_MATCH_THRESHOLD and max_val > best_confidence:
-                    # 九宫格逐点颜色验证
-                    grid = self._grid_points(tmpl_w, tmpl_h)
-                    similarities = []
-                    all_valid = True
-                    for gx, gy in grid:
-                        # B图（模板）上该点的颜色
-                        if 0 <= gx < tmpl_w and 0 <= gy < tmpl_h:
-                            t_color = template[gy, gx]
-                        else:
-                            all_valid = False
-                            break
-                        # A图（ROI）上对应点的颜色
-                        ax = max_loc[0] + gx
-                        ay = max_loc[1] + gy
-                        if 0 <= ax < roi_w and 0 <= ay < roi_h:
-                            m_color = work_img[ay, ax]
-                        else:
-                            all_valid = False
-                            break
-                        sim = self._color_similarity(
-                            t_color.astype(float), m_color.astype(float)
-                        )
-                        similarities.append(sim)
-                    if all_valid and len(similarities) == 9:
-                        avg_sim = sum(similarities) / len(similarities)
-                        if avg_sim < COLOR_MATCH_THRESHOLD:
-                            if max_val > best_color_fail_conf:
-                                best_color_fail_name = template_name
-                                best_color_fail_conf = max_val
-                                best_color_fail_sim = avg_sim
-                            continue  # 颜色不匹配，跳过
-                    best_confidence = max_val
-                    best_match = {
-                        "name": template_name,
-                        "x": max_loc[0],
-                        "y": max_loc[1],
-                        "w": tmpl_w,
-                        "h": tmpl_h,
-                        "confidence": max_val,
-                    }
-            except Exception:
-                continue
+                    if max_val >= TEMPLATE_MATCH_THRESHOLD and max_val > best_confidence:
+                        # 九宫格逐点颜色验证
+                        grid = self._grid_points(tmpl_w, tmpl_h)
+                        similarities = []
+                        all_valid = True
+                        for gx, gy in grid:
+                            # B图（模板）上该点的颜色
+                            if 0 <= gx < tmpl_w and 0 <= gy < tmpl_h:
+                                t_color = template[gy, gx]
+                            else:
+                                all_valid = False
+                                break
+                            # A图（ROI）上对应点的颜色
+                            ax = max_loc[0] + gx
+                            ay = max_loc[1] + gy
+                            if 0 <= ax < roi_w and 0 <= ay < roi_h:
+                                m_color = work_img[ay, ax]
+                            else:
+                                all_valid = False
+                                break
+                            sim = self._color_similarity(
+                                t_color.astype(float), m_color.astype(float)
+                            )
+                            similarities.append(sim)
+                        if all_valid and len(similarities) == 9:
+                            avg_sim = sum(similarities) / len(similarities)
+                            if avg_sim < COLOR_MATCH_THRESHOLD:
+                                if max_val > best_color_fail_conf:
+                                    best_color_fail_name = template_name
+                                    best_color_fail_conf = max_val
+                                    best_color_fail_sim = avg_sim
+                                continue  # 颜色不匹配，跳过
+                        best_confidence = max_val
+                        best_match = {
+                            "name": template_name,
+                            "x": max_loc[0],
+                            "y": max_loc[1],
+                            "w": tmpl_w,
+                            "h": tmpl_h,
+                            "confidence": max_val,
+                        }
+                except Exception:
+                    continue
 
         if best_match is None:
             if total > 0:

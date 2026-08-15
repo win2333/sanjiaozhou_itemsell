@@ -13,9 +13,7 @@ from core.loop import AutoSellLoop
 from config import (
     TEMPLATE_MATCH_THRESHOLD,
     TEMPLATES_DIR,
-    UI_TEMPLATES_DIR,
     USE_GPU_TEMPLATE_RECOGNITION,
-    USE_FIXED_COORDINATES,
 )
 
 
@@ -31,17 +29,9 @@ def init_components() -> AutoSellLoop:
         print(f"\n警告: 没有找到物品模板图片！")
         print(f"请将物品截图放到: {TEMPLATES_DIR}")
 
-    # UI模板识别器（固定坐标模式下不加载模板）
-    ui_recognizer = TemplateRecognizer(
-        str(UI_TEMPLATES_DIR), threshold=0.75, use_gpu=USE_GPU_TEMPLATE_RECOGNITION
-    )
-    if not USE_FIXED_COORDINATES:
-        ui_recognizer.load_templates()
-
     # 创建主循环
     return AutoSellLoop(
         item_recognizer=item_recognizer,
-        ui_recognizer=ui_recognizer,
         capture=ScreenCapture(),
         mouse=MouseController(),
         keyboard=KeyboardController(),
