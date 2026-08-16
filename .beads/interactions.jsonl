@@ -3,3 +3,6 @@
 {"id":"int-4d1ec525","kind":"field_change","created_at":"2026-08-16T15:59:51.3712339Z","actor":"win2333","issue_id":"DetlaForceGame-s54","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}
 {"id":"int-8614e7b2","kind":"field_change","created_at":"2026-08-16T16:05:05.82385Z","actor":"win2333","issue_id":"DetlaForceGame-l7g","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}
 {"id":"int-d25c3e5b","kind":"field_change","created_at":"2026-08-16T16:10:08.5728846Z","actor":"win2333","issue_id":"DetlaForceGame-9d2","extra":{"field":"status","new_value":"deferred","old_value":"open"}}
+{"id":"int-054c9530","kind":"field_change","created_at":"2026-08-16T16:14:33.6992631Z","actor":"win2333","issue_id":"DetlaForceGame-8qv","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"Closed"}}
+{"id":"int-b5dbe771","kind":"field_change","created_at":"2026-08-16T16:14:34.365254Z","actor":"win2333","issue_id":"DetlaForceGame-3o1","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}
+{"id":"int-8373448b","kind":"field_change","created_at":"2026-08-16T16:29:31.0221621Z","actor":"win2333","issue_id":"DetlaForceGame-aef","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"Closed"}}
