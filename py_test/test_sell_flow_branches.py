@@ -137,3 +137,80 @@ class TestSellVerification:
 
         assert ok is False
         assert loop.state.total_sold == 0
+
+    @patch("core.loop.USE_OCR_PRICE", False)
+    @patch("core.loop.SELL_VERIFY_WAIT_S", 0)
+    def test_stacked_item_slot_change_verifies(self):
+        """堆叠物品: 格子未清空但内容变化(数量徽章) -> 验证通过"""
+        import numpy as np
+
+        loop, *_ = _make_loop()
+        calls = {"n": 0}
+
+        # 点击前(n=1):有物品,非空;确认后(n>=2):堆叠剩余,仍非空
+        def fake_empty(x, y):
+            calls["n"] += 1
+            return False  # 始终非空: 点击前有物品,上架后堆叠剩余
+
+        loop._is_empty_slot = fake_empty
+
+        # 格子图像: 基准(徽章亮) vs 上架后(徽章变暗=数量减少)
+        base = np.zeros((40, 40, 3), np.uint8)
+        base[30:34, 30:34] = 200  # 数量徽章
+        after = base.copy()
+        after[30:34, 30:34] = 120
+
+        def fake_capture(x, y):
+            # 基准截取(n=0,在第一次空格检查前)与点击前(n=1)返回 base;
+            # 上架确认后(n>=2)返回 after(数量徽章变化)
+            return base.copy() if calls["n"] <= 1 else after.copy()
+
+        loop._capture_slot_image = fake_capture
+
+        ok = self._run_sell(loop)
+
+        assert ok is True
+        assert loop.state.total_sold == 1
+
+
+class TestSlotChanged:
+    """_slot_changed 合成图验证: 变化超阈值/微小动画不误判"""
+
+    def _loop(self):
+        from unittest.mock import MagicMock
+
+        loop = AutoSellLoop.__new__(AutoSellLoop)
+        loop.status = MagicMock()
+        loop.state = MagicMock()
+        return loop
+
+    def test_badge_change_detected(self):
+        import numpy as np
+
+        loop = self._loop()
+        base = np.zeros((40, 40, 3), np.uint8)
+        base[30:34, 30:34] = 200
+        after = base.copy()
+        after[30:34, 30:34] = 120
+        loop._capture_slot_image = lambda x, y: after
+        assert loop._slot_changed(base, 0, 0) is True
+
+    def test_unchanged_not_detected(self):
+        import numpy as np
+
+        loop = self._loop()
+        base = np.zeros((40, 40, 3), np.uint8)
+        base[30:34, 30:34] = 200
+        loop._capture_slot_image = lambda x, y: base.copy()
+        assert loop._slot_changed(base, 0, 0) is False
+
+    def test_tiny_animation_not_detected(self):
+        import numpy as np
+
+        loop = self._loop()
+        base = np.zeros((40, 40, 3), np.uint8)
+        base[30:34, 30:34] = 200
+        anim = base.copy()
+        anim[0, 1] = 15  # 1 个像素轻微变化(低于 5% 阈值)
+        loop._capture_slot_image = lambda x, y: anim
+        assert loop._slot_changed(base, 0, 0) is False

@@ -550,6 +550,9 @@ class AutoSellLoop:
                 return False
 
             # ========== 左键点击（自动弹出上架界面）==========
+            # 先截取格子基准图: 堆叠物品一次只上架3个,确认后格子不会清空,
+            # 验证改为"格子空 或 内容变化"均算成功
+            slot_before = self._capture_slot_image(x, y)
             self.mouse.click()
             time.sleep(random.uniform(0.05, 0.1))
 
@@ -615,11 +618,18 @@ class AutoSellLoop:
                     if self._is_empty_slot(x, y):
                         verified = True
                         break
+                    # 堆叠物品: 一次只上架3个,格子不会清空,
+                    # 与点击前基准图不同(数量徽章变化)也算成功
+                    if slot_before is not None and self._slot_changed(
+                        slot_before, x, y
+                    ):
+                        verified = True
+                        break
                 if not verified:
                     logger.warning(f"[{item_name}] 验证失败: 格子未清空，疑似未上架成功")
                     self.status.add_event(f"验证失败(格子未空) {item_name}")
                     return False
-                logger.log_only("[验证]", f"[{item_name}] 格子已清空，上架成功")
+                logger.log_only("[验证]", f"[{item_name}] 格子已清空/变化，上架成功")
 
             # 成功完成
             sell_time = time.time() - sell_start
@@ -762,6 +772,57 @@ class AutoSellLoop:
             )
         except Exception:
             pass
+
+    def _capture_slot_image(self, x: int, y: int) -> Optional[np.ndarray]:
+        """截取物品格子小图作为验证基准
+
+        取物品中心 ±20px 区域(覆盖物品图与数量徽章)。
+
+        Args:
+            x, y: 物品中心坐标
+
+        Returns:
+            BGR 图像,截图失败返回 None(验证时跳过对比)
+        """
+        try:
+            region = self._capture_region_by_coords(x - 20, y - 20, x + 20, y + 20)
+            if region is None or region.size == 0:
+                return None
+            if region.shape[2] == 4:
+                region = cv2.cvtColor(region, cv2.COLOR_BGRA2BGR)
+            return region
+        except Exception:
+            return None
+
+    def _slot_changed(self, baseline: np.ndarray, x: int, y: int) -> bool:
+        """对比当前格子与基准图是否有可见变化。
+
+        堆叠物品一次上架3个后格子仍有剩余(不会清空),但数量徽章
+        会变;物品上架动画也会带来短暂亮度波动,故要求差异像素
+        超过阈值才判定变化,避免动画误判。
+
+        Args:
+            baseline: 点击前截取的格子基准图
+            x, y: 物品中心坐标
+
+        Returns:
+            True 表示格子内容已变化(视为上架成功)
+        """
+        current = self._capture_slot_image(x, y)
+        if current is None or current.shape != baseline.shape:
+            return False
+        diff = cv2.absdiff(current, baseline)
+        changed_ratio = float(np.count_nonzero(diff.max(axis=2) > 25)) / (
+            baseline.shape[0] * baseline.shape[1]
+        )
+        # 阈值 0.5%(40x40 采样中约 8 像素): 数量徽章笔画变化实测可低至
+        # 格子面积 1%,5%/2% 都会漏判;上架动画抖动仅 1-2 个像素,不会误判
+        if changed_ratio > 0.005:
+            get_logger().log_only(
+                "[验证]", f"格子内容变化({changed_ratio:.0%}), 堆叠物品上架成功"
+            )
+            return True
+        return False
 
     def _is_empty_slot(self, x: int, y: int) -> bool:
         """检查指定坐标是否是空白格子
