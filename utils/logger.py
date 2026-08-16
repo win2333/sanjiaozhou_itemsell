@@ -13,13 +13,13 @@ from config import DEBUG_MODE
 class Logger:
     """日志记录器"""
 
-    def __init__(self, log_dir: str = "logs"):
+    def __init__(self, log_dir: Optional[str] = None):
         """初始化
 
         Args:
-            log_dir: 日志目录
+            log_dir: 日志目录,缺省用环境变量 SELLING_LOG_DIR 或 "logs"
         """
-        self.log_dir = Path(log_dir)
+        self.log_dir = Path(log_dir or os.environ.get("SELLING_LOG_DIR", "logs"))
         self.log_dir.mkdir(exist_ok=True)
 
         # 生成日志文件名

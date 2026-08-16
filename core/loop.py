@@ -308,7 +308,7 @@ class AutoSellLoop:
                 self.status.item_preview = names[:5]
                 self.status.total_types = len(names)
                 logger.log_only(
-                    "[清单]", f"待出售: " + " | ".join(f"{c.template_name}({c.confidence:.2f})" for c in candidates)
+                    "[清单]", f"待出售: " + " | ".join(f"{c.template_name or 'unknown'}({c.confidence:.2f})" for c in candidates)
                 )
             else:
                 self.status.item_preview = []
