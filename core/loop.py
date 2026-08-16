@@ -582,12 +582,18 @@ class AutoSellLoop:
 
             # ========== 结果验证：格子变空 + 背包仍在 ==========
             if VERIFY_SELL_RESULT:
-                time.sleep(SELL_VERIFY_WAIT_S)
-                if not self._is_backpack_visible():
-                    logger.warning(f"[{item_name}] 验证失败: 背包UI不在屏幕上")
-                    self.status.add_event(f"验证失败(背包关闭) {item_name}")
-                    return False
-                if not self._is_empty_slot(x, y):
+                # 上架动画可能超过单次等待,重试最多 3 次
+                verified = False
+                for attempt in range(3):
+                    time.sleep(SELL_VERIFY_WAIT_S)
+                    if not self._is_backpack_visible():
+                        logger.warning(f"[{item_name}] 验证失败: 背包UI不在屏幕上")
+                        self.status.add_event(f"验证失败(背包关闭) {item_name}")
+                        return False
+                    if self._is_empty_slot(x, y):
+                        verified = True
+                        break
+                if not verified:
                     logger.warning(f"[{item_name}] 验证失败: 格子未清空，疑似未上架成功")
                     self.status.add_event(f"验证失败(格子未空) {item_name}")
                     return False

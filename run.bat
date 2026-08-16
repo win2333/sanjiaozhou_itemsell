@@ -11,7 +11,7 @@ if %errorlevel% neq 0 (
     exit /b
 )
 
-py -3.12 main.py
+C:\Python313\python.exe main.py
 if %errorlevel% neq 0 (
     python main.py
 )

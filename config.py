@@ -21,8 +21,10 @@ YOLO_MODEL_PATH: str = str(BASE_DIR / "models" / "item_detector.pt")
 YOLO_CONFIDENCE_THRESHOLD: float = 0.90
 YOLO_IOU_THRESHOLD: float = 0.45
 
-# Hybrid 模板匹配线程数
+# Hybrid
 HYBRID_MAX_WORKERS: int = 8
+# 纯色 ROI(空格子)跳过模板匹配: 像素标准差低于此值视为纯色
+ROI_SOLID_COLOR_STD = 4.0
 
 # 候选整理
 DEDUP_DISTANCE_PX: int = 20

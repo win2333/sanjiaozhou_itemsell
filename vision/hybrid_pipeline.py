@@ -24,7 +24,7 @@ from vision.item_types import (
 )
 from vision.yolo_item_detector import YoloItemDetector
 from vision.candidate_utils import deduplicate_candidates, sort_candidates
-from config import TEMPLATE_MATCH_THRESHOLD, COLOR_MATCH_THRESHOLD
+from config import TEMPLATE_MATCH_THRESHOLD, COLOR_MATCH_THRESHOLD, ROI_SOLID_COLOR_STD
 
 # ROI 提取时扩展边框像素数
 _ROI_PADDING: int = 10
@@ -300,6 +300,16 @@ class HybridPipeline:
             work_img = cv2.cvtColor(roi, cv2.COLOR_BGRA2BGR)
 
         roi_h, roi_w = work_img.shape[:2]
+
+        # 纯色 ROI(空格子)直接跳过: 物品必然有纹理,
+        # 背包空格是均匀深色,像素 std 极低
+        gray = cv2.cvtColor(work_img, cv2.COLOR_BGR2GRAY)
+        if float(gray.std()) < ROI_SOLID_COLOR_STD:
+            if total > 0:
+                get_logger().log_only(
+                    "[识别]", f"ROI[{index}/{total}] 纯色(空格), 跳过模板匹配"
+                )
+            return None
 
         best_match = None
         best_confidence = 0.0
