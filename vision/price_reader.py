@@ -62,15 +62,19 @@ class PriceReader:
         DEBUG_DIR.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(DEBUG_DIR / "debug_price_region.png"), price_region)
 
-        # 图片预处理：转灰度
+        # 图片预处理：转灰度 → 放大4倍 → 对比度归一化
+        # 实测: 游戏暗色 UI 下 1x 原始灰度 OCR 基本读不出,
+        # 4x 放大 + NORM_MINMAX 归一化 + 数字白名单才稳定
         gray = cv2.cvtColor(price_region, cv2.COLOR_BGR2GRAY)
+        gray = cv2.resize(gray, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
+        gray = cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX)
 
         # 保存预处理后的图片用于调试
         cv2.imwrite(str(DEBUG_DIR / "debug_price_gray.png"), gray)
 
-        # OCR 识别（使用灰度图）
+        # OCR 识别（预处理后的图, 仅允许数字和小数点）
         try:
-            results = reader.readtext(gray, detail=1)
+            results = reader.readtext(gray, detail=1, allowlist="0123456789.,")
         except Exception as e:
             get_logger().log_only("[PriceReader]", f"OCR 识别失败: {e}")
             return []
