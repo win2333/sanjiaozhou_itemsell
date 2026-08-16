@@ -81,6 +81,12 @@ class PriceReader:
 
         # print(f"[PriceReader] OCR 原始结果: {[(bbox, text, conf) for bbox, text, conf in results]}")
 
+        if self._has_split_read(results):
+            get_logger().log_only(
+                "[PriceReader]", "检测到拆读(同一数字分多行), 识别不可信, 放弃本轮定价"
+            )
+            return []
+
         prices = []
         for bbox, text, confidence in results:
             # 提取数字（格式如 "15.922" 或 "15922"）
@@ -109,6 +115,46 @@ class PriceReader:
         # 按价格排序（从小到大）
         prices.sort(key=lambda p: p[0])
         return prices
+
+    @staticmethod
+    def _has_split_read(results: List[Tuple[List, str, float]]) -> bool:
+        """检测同一数字被 OCR 拆成多行读的情况。
+
+        实测: 游戏暗色 UI 下一个价格可能被拆成 '18' 和 '8542' 两次读出,
+        两者 x 范围重叠、y 垂直交错。此时无法可靠还原真实数字
+        (拼接实测会得出 188542 这类错误值),必须放弃本次识别,
+        由调用方回退到固定坐标定价,避免输错价。
+
+        判定: 两个含数字的框 x 重叠超过较小宽度的 50%,
+        且 y 范围交错或紧邻(间距小于较矮框高度)。
+        不同价格柱的标签横向错开且同一行,不会触发。
+
+        Args:
+            results: EasyOCR 原始结果 [(bbox, text, conf), ...]
+
+        Returns:
+            True 表示存在拆读,本次识别不可信
+        """
+        parsed = []
+        for bbox, text, conf in results:
+            if not text or not any(ch.isdigit() for ch in text):
+                continue
+            xs = [p[0] for p in bbox]
+            ys = [p[1] for p in bbox]
+            parsed.append((min(xs), max(xs), min(ys), max(ys)))
+
+        for i in range(len(parsed)):
+            for j in range(i + 1, len(parsed)):
+                a, b = parsed[i], parsed[j]
+                overlap = min(a[1], b[1]) - max(a[0], b[0])
+                min_w = max(1, min(a[1] - a[0], b[1] - b[0]))
+                if overlap <= min_w * 0.5:
+                    continue
+                gap = max(a[2], b[2]) - min(a[3], b[3])  # 负值=交错
+                min_h = max(1, min(a[3] - a[2], b[3] - b[2]))
+                if gap < min_h:
+                    return True
+        return False
 
     def get_p1_p2(self, image: np.ndarray) -> Tuple[Optional[int], Optional[int]]:
         """获取 P1 和 P2（最低价和第二低价）

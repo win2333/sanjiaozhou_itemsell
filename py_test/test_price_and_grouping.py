@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from config import calculate_price
 from core.loop import _group_by_type
 from vision.item_types import ItemCandidate
+from vision.price_reader import PriceReader
 
 
 def _cand(x: int, y: int, name: str) -> ItemCandidate:
@@ -82,3 +83,31 @@ class TestGroupByType:
 
     def test_empty_input(self):
         assert _group_by_type([]) == []
+
+
+class TestHasSplitRead:
+    """OCR 拆读检测: 同一数字被拆成多行时放弃定价,防止拼错价"""
+
+    def test_split_read_detected(self):
+        split = [
+            ([[0, 0], [10, 0], [10, 5], [0, 5]], "18", 0.8),
+            ([[1, 6], [11, 6], [11, 11], [1, 11]], "8542", 0.5),
+        ]
+        assert PriceReader._has_split_read(split) is True
+
+    def test_two_normal_bars_not_flagged(self):
+        normal = [
+            ([[0, 0], [30, 0], [30, 8], [0, 8]], "22000", 0.9),
+            ([[101, 0], [131, 0], [131, 8], [101, 8]], "24000", 0.9),
+        ]
+        assert PriceReader._has_split_read(normal) is False
+
+    def test_different_x_not_flagged(self):
+        diff = [
+            ([[0, 0], [10, 0], [10, 5], [0, 5]], "18", 0.8),
+            ([[50, 6], [80, 6], [80, 11], [50, 11]], "22000", 0.9),
+        ]
+        assert PriceReader._has_split_read(diff) is False
+
+    def test_empty_results(self):
+        assert PriceReader._has_split_read([]) is False
