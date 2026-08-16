@@ -59,7 +59,7 @@ main.py — F8热键 → loop.start()
 - `ItemCandidate` — 第二段输出，pipeline 整理后（全屏坐标 + 排序 + 去重，含模板名）
 - `RoundSummary` — 每轮统计摘要（各阶段数量 + 第一名 + raw_yolo_detections）
 
-**4步卖出流程：** 点击物品 → 设置数量×3 → 设置价格(退格+坐标点击) → 点击上架确认
+**4步卖出流程：** 点击物品 → 设置数量×3 → 设置价格(OCR 动态定价，失败回退退格+坐标点击) → 点击上架确认 → 结果验证(格子清空或内容变化，最多重试3次)
 
 ## 核心目录/文件
 
@@ -98,8 +98,11 @@ main.py — F8热键 → loop.start()
 | `USE_FIXED_COORDINATES` | `True` | 跳过 UI 识别，用预校准坐标 |
 | `USE_GPU_TEMPLATE_RECOGNITION` | `False` | GPU 加速（需 NVIDIA CUDA + torch） |
 | `DEBUG_MODE` | `False` | `True`=详细日志到控制台+文件；`False`=仅写文件，控制台只显示摘要 |
-| `VERIFY_SELL_RESULT` | `True` | 确认点击后验证格子清空+背包UI，失败不计入卖出数 |
-| `USE_OCR_PRICE` | `True` | 上架时 OCR 读价格柱动态定价，失败回退固定坐标点击 |
+| `VERIFY_SELL_RESULT` | `True` | 确认点击后验证格子清空/内容变化+背包UI，失败不计入卖出数 |
+| `SELL_VERIFY_WAIT_S` | `0.5` | 每次验证等待秒数（最多重试 3 次） |
+| `USE_OCR_PRICE` | `True` | 上架时 OCR 读价格柱动态定价，失败/拆读/异常价回退固定坐标点击 |
+| `ROI_SOLID_COLOR_STD` | `4.0` | 纯色 ROI（空格）灰度 std 低于此值直接跳过模板匹配 |
+| `PRICE_REGION_LEFT/TOP/RIGHT/BOTTOM` | `400/734/1050/770` | 价格柱 OCR 区域（全屏坐标） |
 | `SAVE_DEBUG_IMAGES` | `False` | debug 图片输出开关（生成到 debug/round_NNNN/） |
 | `LOOP_DELAY` | 0.1 | 主循环间隔秒数 |
 | `HYBRID_MAX_WORKERS` | 8 | Hybrid 模式模板匹配线程数 |
@@ -143,7 +146,8 @@ main.py — F8热键 → loop.start()
 
 - Phase 1 ✓：Bug Fixes — 修复 CPU 崩溃，阈值统一到 config
 - Phase 2 ✓：Debug Visibility — 检测漏斗日志、阶段耗时、标注截图、YOLO原始框
-- Phase 3 ○：Advanced Debug — 置信度直方图、静默失败检测器（未开始）
+- Phase 3 ✓：Reliability — 卖出结果验证（格子清空/变化）、OCR 动态定价（拆读检测回退）、纯色 ROI 跳过、模板尺寸分组、29 个单元测试
+- Phase 4 ○：游戏内实测校准 — OCR 左截断假设验证、验证阈值实测调整（待用户实测数据）
 
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:7510c1e2 -->
