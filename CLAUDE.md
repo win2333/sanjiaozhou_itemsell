@@ -135,8 +135,7 @@ main.py — F8热键 → loop.start()
 ### 其他
 - 模板文件支持中文文件名，放在 `templates/` 目录（963 个物品模板）
 - `vision/recognizer.py` 启动时加载所有模板到内存，按 (h, w) 分组加速匹配
-- `_is_empty_slot` 通过 3x3 共 9 像素判断格子 RGB(26,31,34) 是否一致，用于跳过空白格
-- `_has_green_button` HSV 空间检测绿色比例 > 5%，保留给 UI 验证逻辑使用
+- `_is_empty_slot` 通过 3x3 共 9 像素判断格子 RGB(26,31,34) 是否一致，用于跳过空白格；在卖出流程中被调用两次：点击前判断格内有无物品、确认上架后判断格子是否清空
 - `save_debug_frame` 每轮可生成 3 张标注截图（00_original / 01_yolo / 02_pipeline），按 round_NNNN/ 分目录
 - `RoundSummary.raw_yolo_detections` 存储 YOLO 原始检测框列表，供调试绘图使用
 
