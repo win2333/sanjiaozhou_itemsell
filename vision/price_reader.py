@@ -251,35 +251,37 @@ def calculate_price_with_fallback(p1: int, p2: Optional[int] = None) -> int:
 
 
 def test_price_reader():
-    """测试价格识别"""
+    """零风险 OCR 验证:与主流程同参数读当前屏幕价格柱,不点击不卖出。
+
+    用法: 游戏打开上架界面(价格柱可见),运行
+    python -m vision.price_reader
+    每次回车截一屏并报告识别结果,Ctrl+C 退出。
+    """
     import sys
     sys.path.insert(0, '.')
     from vision.capture import ScreenCapture
+    from config import calculate_price
 
     print("=" * 50)
-    print("价格识别测试")
+    print("价格识别验证(与主流程同区域同预处理)")
     print("=" * 50)
 
     capture = ScreenCapture()
     reader = PriceReader()
 
-    print("\n按 Enter 截图并识别价格...")
-    input()
+    while True:
+        print("\n按 Enter 截图识别(Ctrl+C 退出)...")
+        input()
 
-    image = capture.capture_full_screen()
+        image = capture.capture_full_screen()
+        p1, p2 = reader.get_p1_p2(image)
 
-    # 获取 P1, P2
-    p1, p2 = reader.get_p1_p2(image)
-
-    if p1 is not None:
-        print(f"\nP1 (最低价): {p1}")
-        print(f"P2 (第二低价): {p2}")
-
-        # 计算最优价格
-        price = calculate_price_with_fallback(p1, p2)
-        print(f"\n建议售价: {price}")
-    else:
-        print("未能识别到价格")
+        if p1 is not None:
+            print(f"P1 (最低价): {p1}")
+            print(f"P2 (第二低价): {p2}")
+            print(f"建议售价: {calculate_price(p1, p2)}")
+        else:
+            print("未识别到价格(若上方有'拆读'警告,看 debug/debug_price_wide.png)")
 
 
 if __name__ == "__main__":

@@ -136,6 +136,23 @@ class AutoSellLoop:
         """
         return self.run()
 
+    def _warm_up_ocr(self) -> None:
+        """后台线程预热 EasyOCR,避免首次卖出时阻塞点击流程约 10s"""
+        if self.price_reader is None:
+            return
+
+        def _init():
+            try:
+                from vision.price_reader import get_ocr_reader
+
+                get_ocr_reader()
+            except Exception:
+                pass  # 失败不影响主流程,卖出时会再尝试并回退
+
+        import threading
+
+        threading.Thread(target=_init, daemon=True).start()
+
     def run(self) -> str:
         """Hybrid 循环：检测用新架构 pipeline，卖出用旧架构完整流程
 
@@ -145,6 +162,7 @@ class AutoSellLoop:
         self.state = SellState()
         self.state.is_running = True
         self.start_time = time.time()
+        self._warm_up_ocr()
         self.status.status = "运行中"
         self.status.round_num = 0
         self.status.current_item = ""
