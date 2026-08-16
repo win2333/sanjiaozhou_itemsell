@@ -3,7 +3,13 @@
 import re
 import math
 import cv2
-from config import DEBUG_DIR
+from config import (
+    DEBUG_DIR,
+    PRICE_REGION_LEFT,
+    PRICE_REGION_TOP,
+    PRICE_REGION_RIGHT,
+    PRICE_REGION_BOTTOM,
+)
 import numpy as np
 from typing import List, Tuple, Optional, Dict
 
@@ -48,12 +54,19 @@ class PriceReader:
             return []
 
         # 价格区域（5个价格显示的位置）
-        # 坐标：左上 (440, 734)，右下 (1050, 770)
-        if image is None or image.shape[0] < 770 or image.shape[1] < 1050:
+        # 坐标来自 config（实测曾出现最左标签被截断，左界已扩到 400）
+        if (
+            image is None
+            or image.shape[0] < PRICE_REGION_BOTTOM
+            or image.shape[1] < PRICE_REGION_RIGHT
+        ):
             get_logger().log_only("[PriceReader]", "截图尺寸不足，无法裁剪价格区域")
             return []
 
-        price_region = image[734:770, 440:1050]
+        price_region = image[
+            PRICE_REGION_TOP:PRICE_REGION_BOTTOM,
+            PRICE_REGION_LEFT:PRICE_REGION_RIGHT,
+        ]
         if price_region.size == 0:
             get_logger().log_only("[PriceReader]", "价格区域为空")
             return []
@@ -82,6 +95,12 @@ class PriceReader:
         # print(f"[PriceReader] OCR 原始结果: {[(bbox, text, conf) for bbox, text, conf in results]}")
 
         if self._has_split_read(results):
+            # 保存宽幅上下文截图,供离线定位真实标签边界
+            try:
+                wide = image[700:790, 340:1060]
+                cv2.imwrite(str(DEBUG_DIR / "debug_price_wide.png"), wide)
+            except Exception:
+                pass
             get_logger().log_only(
                 "[PriceReader]", "检测到拆读(同一数字分多行), 识别不可信, 放弃本轮定价"
             )
@@ -104,9 +123,9 @@ class PriceReader:
                     if price_value < 100:
                         get_logger().log_only("[PriceReader]", f"忽略过小值: {price_value}")
                         continue
-                    # 计算在原图中的位置
-                    x = int(bbox[0][0]) + 440
-                    y = int(bbox[0][1]) + 734
+                    # 计算在原图中的位置(bbox 在 4x 放大图上,需除回)
+                    x = int(bbox[0][0] / 4) + PRICE_REGION_LEFT
+                    y = int(bbox[0][1] / 4) + PRICE_REGION_TOP
                     prices.append((price_value, x, y))
                     get_logger().log_only("[PriceReader]", f"识别到价格: {price_value} (置信度: {confidence:.2f})")
                 except ValueError:

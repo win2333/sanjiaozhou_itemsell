@@ -50,6 +50,12 @@ SELL_VERIFY_WAIT_S = 0.5  # 确认点击后等待界面响应的秒数
 # 失败(OCR 不可用/读不到/算出异常价)自动回退到旧的固定坐标点击
 USE_OCR_PRICE = True
 
+# 价格柱 OCR 区域(全屏坐标)。左界曾用 440,实测疑似把最左标签截断,扩到 400
+PRICE_REGION_LEFT = 400
+PRICE_REGION_TOP = 734
+PRICE_REGION_RIGHT = 1050
+PRICE_REGION_BOTTOM = 770
+
 # 固定坐标（1920×1080）
 BACKPACK_LEFT = 1200
 BACKPACK_TOP = 100
