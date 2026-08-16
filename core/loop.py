@@ -523,6 +523,9 @@ class AutoSellLoop:
         try:
 
             # ========== 步骤 1: 鼠标移动到目标位置 ==========
+            # 格子基准图必须在鼠标移入之前截取: 悬停高亮会改变格子外观,
+            # 验证时鼠标已离开,高亮差会被误判为"格子变化"(假成功)
+            slot_before = self._capture_slot_image(x, y)
             logger.step(f"[{item_name}] [1/4] 鼠标移动到 ({x}, {y})")
             self.status.current_step = "1/4 移动到物品"
             render_panel(self.status)
@@ -550,9 +553,6 @@ class AutoSellLoop:
                 return False
 
             # ========== 左键点击（自动弹出上架界面）==========
-            # 先截取格子基准图: 堆叠物品一次只上架3个,确认后格子不会清空,
-            # 验证改为"格子空 或 内容变化"均算成功
-            slot_before = self._capture_slot_image(x, y)
             self.mouse.click()
             time.sleep(random.uniform(0.05, 0.1))
 
