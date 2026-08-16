@@ -145,9 +145,13 @@ class AutoSellLoop:
             try:
                 from vision.price_reader import get_ocr_reader
 
-                get_ocr_reader()
-            except Exception:
-                pass  # 失败不影响主流程,卖出时会再尝试并回退
+                reader = get_ocr_reader()
+                state = "成功" if reader is not None else "失败(卖出时将回退固定坐标)"
+                get_logger().log_only("[初始化]", f"OCR 预热{state}")
+            except Exception as e:
+                get_logger().log_only(
+                    "[初始化]", f"OCR 预热异常: {type(e).__name__}: {e}"
+                )
 
         import threading
 
@@ -758,29 +762,6 @@ class AutoSellLoop:
             )
         except Exception:
             pass
-
-    def _has_green_button(self, x1: int, y1: int, x2: int, y2: int) -> bool:
-        """检查指定区域是否有绿色按钮
-
-        Args:
-            x1, y1: 左上角
-            x2, y2: 右下角
-
-        Returns:
-            True 表示有绿色，False 表示没有
-        """
-        region = self._capture_region_by_coords(x1, y1, x2, y2)
-        if region is None or region.size == 0:
-            return False
-
-        # 转 HSV，检测绿色
-        hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
-        # 绿色范围：H=35~85（OpenCV中），S>40，V>40
-        lower_green = np.array([35, 40, 40])
-        upper_green = np.array([85, 255, 255])
-        mask = cv2.inRange(hsv, lower_green, upper_green)
-        green_ratio = np.count_nonzero(mask) / mask.size
-        return green_ratio > 0.05  # 超过 5% 像素是绿色
 
     def _is_empty_slot(self, x: int, y: int) -> bool:
         """检查指定坐标是否是空白格子
